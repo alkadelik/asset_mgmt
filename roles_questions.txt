@@ -1,0 +1,59 @@
+Roles
+Technician / Team lead
+One or all members of the team have access to the app. This would ideally be the team lead however it has been observed that in some cases, only one team member carries out maintenance duties.
+App goals for Technician/Team Lead
+Track base stations to attend to daily
+Inform technician of which assets within the base station to check - for routine maintenance
+e.g. generator run hours, diesel level, janitorial checks, and others.
+Inform technician of maintenance checklist on each asset
+Let technician tick off maintenance items for each asset
+Let technician enter extraordinary notes where necessary - during maintenance
+Let technician enter extraordinary notes - after maintenance (until next maintenance period)
+Inform technician of alarms
+Inform technician of extraordinary maintenance task
+Track request and receipt of consumables
+Record usage of consumables per asset, per base station
+Upload photos of assets and consumable usage - where necessary
+Enter quantity of diesel supplied
+Submit daily maintenance reports to cluster manager
+Clock in and out (maintenance start, and end times)
+Work flow (Shape-up style)
+To be done after confirming user stories
+Questions
+What’s their KPI? Can the app help them do their work better - in addition to what it already does?
+Cluster Manger
+Ensures daily or periodic maintenance takes place. What are their KPIs? Would they be interested in statistics?
+App goals for Cluster Manager
+View list of daily maintenance reports from all base stations
+Identify stations that are in bad and Fair conditions
+View detail of maintenance report from each base station - including extraordinary notes
+What does he do with this information?
+View statistics:
+Percentage of base stations in bad, fair, and good conditions
+Average maintenance time per base station, and per cluster
+View list of technicians including:
+Teams
+Assigned base stations
+Should Cluster Managers be able to:
+Shuffle teams?
+Assign teams/technicians to clusters?
+Assign technician to alarms (outside routine maintenance)?
+Questions
+What happens when there’s an alarm or extraordinary note?
+What do they do with stations in bad or fair condition?
+What do they do with the statistics? Does it help them do their job better?
+Do cluster managers create their own reports?
+Who do they submit to, and what does that look like?
+What is their KPI - can the app help them know where they are at any given point in time?
+What interaction or control do they have with the technicians?
+Work flow
+To be done after confirming user stories
+Cluster Group Manager
+List of groups
+Health of each cluster at any given point in time - based on the aggregate number of base stations in poor or fair conditions
+Questions
+Is it possible that the introduction of the app makes the 
+Regional manager
+Other questions:
+Can we outline the KPIs and functions of each chain of command - from technician to regional manager or Business rep
+Is it possible that the introduction of the app makes some roles redundant - or allows there to be a lower number of managers than without the app? This might mean ST&T don’t have to hire that many managers according to the re-organised chart

@@ -1,0 +1,651 @@
+from django.core.files.storage import default_storage
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes, parser_classes
+from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+
+from .models import (
+    WorkOrder, Alarm, AlarmNote, InspectionResponse,
+    WorkOrderChecklistResponse, Issue, Condition, Asset,
+    PMQuestion, AssetCheckList, Attachment, BaseStation, DieselDelivery,
+    MeterReading, Part, PartRequest, PartUsage, SafetyReport, Vendor,
+)
+from .serializers import (
+    PersonnelSerializer, WorkOrderDetailSerializer, AlarmDetailSerializer,
+    AlarmNoteSerializer, InspectionResponseDetailSerializer,
+    ChecklistResponseSerializer, IssueSerializer, ConditionSerializer,
+    BaseStationSummarySerializer, WorkOrderSummarySerializer,
+    AlarmSummarySerializer, AssetSummarySerializer,
+    AttachmentSerializer, DieselDeliverySerializer, MeterReadingSerializer,
+    PartRequestSerializer, PartSerializer, PartUsageSerializer,
+    SafetyReportSerializer, VendorSerializer,
+)
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login(request):
+    from django.contrib.auth import authenticate
+    username = request.data.get('username', '')
+    password = request.data.get('password', '')
+    user = authenticate(request, username=username, password=password)
+    if not user:
+        return Response({'detail': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': PersonnelSerializer(user).data,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def logout(request):
+    try:
+        token = RefreshToken(request.data.get('refresh'))
+        token.blacklist()
+    except (TokenError, Exception):
+        pass
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+def me(request):
+    return Response(PersonnelSerializer(request.user).data)
+
+
+# ── Today ─────────────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def today(request):
+    user = request.user
+    today_date = timezone.localdate()
+
+    assigned_stations = user.stations.prefetch_related('clients', 'manager').all()
+
+    # Routine: today's preventive work orders for this technician's stations
+    routine_wos = WorkOrder.objects.filter(
+        base_station__in=assigned_stations,
+        type=WorkOrder.TYPE_PREVENTIVE,
+        due_date=today_date,
+    ).select_related('base_station__manager').prefetch_related('base_station__clients')
+
+    def wo_track_status(wo):
+        if wo.submitted:
+            return 'submitted'
+        if wo.ended_at:
+            return 'complete'
+        if wo.started_at:
+            return 'ongoing'
+        return 'not_started'
+
+    routine = [
+        {
+            'base_station': BaseStationSummarySerializer(wo.base_station).data,
+            'work_order': WorkOrderSummarySerializer(wo).data,
+            'track_status': wo_track_status(wo),
+        }
+        for wo in routine_wos
+    ]
+
+    # Alarms: open alarms + alarms resolved today for the technician's stations
+    station_ids = [s.id for s in assigned_stations]
+
+    open_alarms = Alarm.objects.filter(
+        asset__location__base_station_id__in=station_ids,
+        resolved_at__isnull=True,
+    ).select_related(
+        'asset__location__base_station__manager',
+        'asset__asset_category',
+    ).prefetch_related('asset__location__base_station__clients')
+
+    resolved_today = Alarm.objects.filter(
+        asset__location__base_station_id__in=station_ids,
+        resolved_at__date=today_date,
+    ).select_related(
+        'asset__location__base_station__manager',
+        'asset__asset_category',
+    ).prefetch_related('asset__location__base_station__clients')
+
+    seen_ids = set()
+    all_alarms = []
+    for a in list(open_alarms) + list(resolved_today):
+        if a.id not in seen_ids:
+            seen_ids.add(a.id)
+            all_alarms.append(a)
+
+    alarms = [
+        {
+            'base_station': BaseStationSummarySerializer(
+                a.asset.location.base_station
+            ).data if a.asset.location else {},
+            'asset': AssetSummarySerializer(a.asset).data,
+            'alarm': AlarmSummarySerializer(a).data,
+            'track_status': 'resolved' if a.resolved_at else 'triggered',
+        }
+        for a in all_alarms
+        if a.asset.location
+    ]
+
+    routine_complete = sum(1 for r in routine if r['track_status'] in ('complete', 'submitted'))
+    alarms_resolved = sum(1 for a in alarms if a['track_status'] == 'resolved')
+
+    return Response({
+        'summary': {
+            'maintenance': {'complete': routine_complete, 'total': len(routine)},
+            'alarms': {'resolved': alarms_resolved, 'total': len(alarms)},
+        },
+        'routine': routine,
+        'alarms': alarms,
+    })
+
+
+# ── Work Orders ───────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def work_order_detail(request, pk):
+    try:
+        wo = WorkOrder.objects.select_related(
+            'base_station__manager'
+        ).prefetch_related(
+            'base_station__clients',
+            'inspection_responses__issues',
+        ).get(pk=pk)
+    except WorkOrder.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(WorkOrderDetailSerializer(wo).data)
+
+
+@api_view(['POST'])
+def work_order_start(request, pk):
+    try:
+        wo = WorkOrder.objects.get(pk=pk)
+    except WorkOrder.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if wo.started_at:
+        return Response({'detail': 'Already started.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    geofence_verified = request.data.get('geofence_verified', False)
+    wo.started_at = timezone.now()
+    wo.geofence_verified = geofence_verified
+    wo.status = WorkOrder.STATUS_IN_PROGRESS
+    wo.save(update_fields=['started_at', 'geofence_verified', 'status', 'updated'])
+    return Response({'started_at': wo.started_at, 'geofence_verified': wo.geofence_verified})
+
+
+@api_view(['POST'])
+def work_order_end(request, pk):
+    try:
+        wo = WorkOrder.objects.get(pk=pk)
+    except WorkOrder.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if not wo.started_at:
+        return Response({'detail': 'Work order not started.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    done_ids = list(
+        wo.inspection_responses.filter(done=False).values_list('id', flat=True)
+    )
+    wo.inspection_responses.filter(done=False).update(done=True)
+    wo.ended_at = timezone.now()
+    wo.status = WorkOrder.STATUS_COMPLETE
+    wo.save(update_fields=['ended_at', 'status', 'updated'])
+    return Response({
+        'ended_at': wo.ended_at,
+        'assets_marked_done': [str(i) for i in done_ids],
+    })
+
+
+# ── Alarms ────────────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def alarm_detail(request, pk):
+    try:
+        alarm = Alarm.objects.select_related(
+            'asset__location__base_station__manager',
+            'resolved_by',
+        ).prefetch_related(
+            'asset__location__base_station__clients',
+            'notes',
+        ).get(pk=pk)
+    except Alarm.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    return Response(AlarmDetailSerializer(alarm).data)
+
+
+@api_view(['POST'])
+def alarm_resolve(request, pk):
+    try:
+        alarm = Alarm.objects.get(pk=pk)
+    except Alarm.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if alarm.resolved_at:
+        return Response({'detail': 'Already resolved.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    alarm.resolved_at = timezone.now()
+    alarm.resolved_by = request.user
+    alarm.save(update_fields=['resolved_at', 'resolved_by', 'updated'])
+    return Response({
+        'resolved_at': alarm.resolved_at,
+        'resolved_by': {'id': str(request.user.id), 'name': request.user.name},
+    })
+
+
+@api_view(['POST'])
+def alarm_add_note(request, pk):
+    try:
+        alarm = Alarm.objects.get(pk=pk)
+    except Alarm.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    text = request.data.get('text', '').strip()
+    if not text:
+        return Response({'detail': 'text is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    note = AlarmNote.objects.create(alarm=alarm, text=text)
+    return Response(AlarmNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+# ── Inspection Responses ──────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def inspection_responses(request):
+    if request.method == 'GET':
+        qs = InspectionResponse.objects.filter(
+            work_order__base_station__in=request.user.stations.all()
+        ).prefetch_related('conditions', 'checklist_responses__question', 'issues')
+        return Response(InspectionResponseDetailSerializer(qs, many=True).data)
+
+    work_order_id = request.data.get('work_order')
+    asset_id = request.data.get('asset')
+    if not work_order_id or not asset_id:
+        return Response(
+            {'detail': 'work_order and asset are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        wo = WorkOrder.objects.get(pk=work_order_id)
+        asset = Asset.objects.select_related('asset_category').get(pk=asset_id)
+    except (WorkOrder.DoesNotExist, Asset.DoesNotExist):
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    ir, created = InspectionResponse.objects.get_or_create(work_order=wo, asset=asset)
+
+    if created:
+        checklists = AssetCheckList.objects.filter(asset_category=asset.asset_category)
+        questions = PMQuestion.objects.filter(task_template__in=checklists)
+        WorkOrderChecklistResponse.objects.bulk_create([
+            WorkOrderChecklistResponse(inspection_response=ir, question=q)
+            for q in questions
+        ])
+
+    ir = InspectionResponse.objects.prefetch_related(
+        'conditions', 'checklist_responses__question', 'issues'
+    ).get(pk=ir.pk)
+    return Response(
+        InspectionResponseDetailSerializer(ir).data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+    )
+
+
+@api_view(['GET', 'PATCH'])
+def inspection_response_detail(request, pk):
+    try:
+        ir = InspectionResponse.objects.prefetch_related(
+            'conditions', 'checklist_responses__question', 'issues'
+        ).get(pk=pk)
+    except InspectionResponse.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'GET':
+        return Response(InspectionResponseDetailSerializer(ir).data)
+
+    if 'issues_found' in request.data:
+        ir.issues_found = request.data['issues_found']
+    if 'comments' in request.data:
+        ir.comments = request.data['comments']
+    if 'conditions' in request.data:
+        ir.conditions.set(request.data['conditions'])
+    ir.save()
+
+    ir = InspectionResponse.objects.prefetch_related(
+        'conditions', 'checklist_responses__question', 'issues'
+    ).get(pk=pk)
+    return Response(InspectionResponseDetailSerializer(ir).data)
+
+
+@api_view(['PATCH'])
+def checklist_response_detail(request, pk):
+    try:
+        cr = WorkOrderChecklistResponse.objects.select_related('question').get(pk=pk)
+    except WorkOrderChecklistResponse.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if 'checked' in request.data:
+        cr.checked = request.data['checked']
+        cr.save(update_fields=['checked', 'updated'])
+    return Response(ChecklistResponseSerializer(cr).data)
+
+
+# ── Issues ────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+def issues(request):
+    ir_id = request.data.get('inspection_response')
+    description = request.data.get('description', '').strip()
+    severity = request.data.get('severity')
+
+    if not ir_id or not description or not severity:
+        return Response(
+            {'detail': 'inspection_response, description, and severity are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if severity not in dict(Issue.SEVERITY_CHOICES):
+        return Response({'detail': 'Invalid severity.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        ir = InspectionResponse.objects.get(pk=ir_id)
+    except InspectionResponse.DoesNotExist:
+        return Response({'detail': 'Inspection response not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    issue = Issue.objects.create(inspection_response=ir, description=description, severity=severity)
+    return Response(IssueSerializer(issue).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+def issue_detail(request, pk):
+    try:
+        issue = Issue.objects.get(pk=pk)
+    except Issue.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    issue.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Conditions ────────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def conditions(request):
+    asset_category_id = request.query_params.get('asset_category')
+    qs = Condition.objects.all()
+    if asset_category_id:
+        qs = qs.filter(asset_category_id=asset_category_id)
+    return Response(ConditionSerializer(qs, many=True).data)
+
+
+# ── Meter Readings ────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def meter_readings(request):
+    if request.method == 'GET':
+        qs = MeterReading.objects.filter(asset__location__base_station__in=request.user.stations.all())
+        asset_id = request.query_params.get('asset')
+        if asset_id:
+            qs = qs.filter(asset_id=asset_id)
+        return Response(MeterReadingSerializer(qs, many=True).data)
+
+    asset_id = request.data.get('asset')
+    reading_type = request.data.get('reading_type')
+    value = request.data.get('value')
+    unit = request.data.get('unit')
+
+    if not asset_id or not reading_type or value is None or not unit:
+        return Response(
+            {'detail': 'asset, reading_type, value, and unit are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if reading_type not in dict(MeterReading.TYPE_CHOICES):
+        return Response({'detail': 'Invalid reading_type.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        asset = Asset.objects.get(pk=asset_id)
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    reading = MeterReading.objects.create(
+        asset=asset,
+        reading_type=reading_type,
+        value=value,
+        unit=unit,
+        date=request.data.get('date') or timezone.localdate(),
+        work_order_id=request.data.get('work_order') or None,
+        recorded_by=request.user,
+    )
+    return Response(MeterReadingSerializer(reading).data, status=status.HTTP_201_CREATED)
+
+
+# ── Vendors & Parts ───────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def vendors(request):
+    qs = Vendor.objects.all()
+    vendor_type = request.query_params.get('type')
+    if vendor_type:
+        qs = qs.filter(type=vendor_type)
+    return Response(VendorSerializer(qs, many=True).data)
+
+
+@api_view(['GET'])
+def parts(request):
+    qs = Part.objects.all()
+    search = request.query_params.get('search')
+    if search:
+        qs = qs.filter(name__icontains=search)
+    return Response(PartSerializer(qs, many=True).data)
+
+
+# ── Diesel Deliveries ─────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def diesel_deliveries(request):
+    if request.method == 'GET':
+        qs = DieselDelivery.objects.filter(
+            base_station__in=request.user.stations.all()
+        ).select_related('base_station__manager', 'vendor').prefetch_related(
+            'base_station__clients', 'attachments'
+        )
+        base_station_id = request.query_params.get('base_station')
+        if base_station_id:
+            qs = qs.filter(base_station_id=base_station_id)
+        return Response(DieselDeliverySerializer(qs, many=True).data)
+
+    base_station_id = request.data.get('base_station')
+    quantity_litres = request.data.get('quantity_litres')
+
+    if not base_station_id or not quantity_litres:
+        return Response(
+            {'detail': 'base_station and quantity_litres are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        base_station = BaseStation.objects.get(pk=base_station_id)
+    except BaseStation.DoesNotExist:
+        return Response({'detail': 'Base station not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    delivery = DieselDelivery.objects.create(
+        base_station=base_station,
+        work_order_id=request.data.get('work_order') or None,
+        vendor_id=request.data.get('vendor') or None,
+        quantity_litres=quantity_litres,
+        tank_level_before=request.data.get('tank_level_before') or None,
+        tank_level_after=request.data.get('tank_level_after') or None,
+        delivered_at=request.data.get('delivered_at') or timezone.now(),
+        recorded_by=request.user,
+        notes=request.data.get('notes', ''),
+    )
+    return Response(DieselDeliverySerializer(delivery).data, status=status.HTTP_201_CREATED)
+
+
+# ── Part Requests ─────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def part_requests(request):
+    if request.method == 'GET':
+        qs = PartRequest.objects.filter(requested_by=request.user).select_related('part', 'base_station')
+        return Response(PartRequestSerializer(qs, many=True).data)
+
+    part_id = request.data.get('part')
+    base_station_id = request.data.get('base_station')
+    quantity = request.data.get('quantity')
+
+    if not part_id or not base_station_id or not quantity:
+        return Response(
+            {'detail': 'part, base_station, and quantity are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        part = Part.objects.get(pk=part_id)
+        base_station = BaseStation.objects.get(pk=base_station_id)
+    except (Part.DoesNotExist, BaseStation.DoesNotExist):
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    part_request = PartRequest.objects.create(
+        part=part,
+        base_station=base_station,
+        work_order_id=request.data.get('work_order') or None,
+        asset_id=request.data.get('asset') or None,
+        quantity=quantity,
+        reason=request.data.get('reason', ''),
+        requested_by=request.user,
+    )
+    return Response(PartRequestSerializer(part_request).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+def part_request_receive(request, pk):
+    try:
+        part_request = PartRequest.objects.get(pk=pk)
+    except PartRequest.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if part_request.status == PartRequest.STATUS_RECEIVED:
+        return Response({'detail': 'Already received.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    part_request.status = PartRequest.STATUS_RECEIVED
+    part_request.received_at = timezone.now()
+    part_request.save(update_fields=['status', 'received_at', 'updated'])
+    return Response(PartRequestSerializer(part_request).data)
+
+
+# ── Part Usage ────────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def part_usages(request):
+    if request.method == 'GET':
+        qs = PartUsage.objects.filter(
+            asset__location__base_station__in=request.user.stations.all()
+        ).select_related('part', 'asset')
+        work_order_id = request.query_params.get('work_order')
+        if work_order_id:
+            qs = qs.filter(work_order_id=work_order_id)
+        return Response(PartUsageSerializer(qs, many=True).data)
+
+    work_order_id = request.data.get('work_order')
+    asset_id = request.data.get('asset')
+    part_id = request.data.get('part')
+    qty_used = request.data.get('qty_used')
+
+    if not work_order_id or not asset_id or not part_id or not qty_used:
+        return Response(
+            {'detail': 'work_order, asset, part, and qty_used are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        wo = WorkOrder.objects.get(pk=work_order_id)
+        asset = Asset.objects.get(pk=asset_id)
+        part = Part.objects.get(pk=part_id)
+    except (WorkOrder.DoesNotExist, Asset.DoesNotExist, Part.DoesNotExist):
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    usage = PartUsage.objects.create(
+        work_order=wo,
+        asset=asset,
+        part=part,
+        qty_used=qty_used,
+        notes=request.data.get('notes', ''),
+        recorded_by=request.user,
+    )
+    return Response(PartUsageSerializer(usage).data, status=status.HTTP_201_CREATED)
+
+
+# ── Safety Reports ────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+def safety_reports(request):
+    if request.method == 'GET':
+        qs = SafetyReport.objects.filter(
+            base_station__in=request.user.stations.all()
+        ).select_related('base_station__manager').prefetch_related(
+            'base_station__clients', 'attachments'
+        )
+        return Response(SafetyReportSerializer(qs, many=True).data)
+
+    base_station_id = request.data.get('base_station')
+    report_type = request.data.get('type')
+    severity = request.data.get('severity')
+    description = request.data.get('description', '').strip()
+
+    if not base_station_id or not report_type or not severity or not description:
+        return Response(
+            {'detail': 'base_station, type, severity, and description are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if report_type not in dict(SafetyReport.TYPE_CHOICES):
+        return Response({'detail': 'Invalid type.'}, status=status.HTTP_400_BAD_REQUEST)
+    if severity not in dict(SafetyReport.SEVERITY_CHOICES):
+        return Response({'detail': 'Invalid severity.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        base_station = BaseStation.objects.get(pk=base_station_id)
+    except BaseStation.DoesNotExist:
+        return Response({'detail': 'Base station not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    report = SafetyReport.objects.create(
+        base_station=base_station,
+        work_order_id=request.data.get('work_order') or None,
+        type=report_type,
+        severity=severity,
+        description=description,
+        reported_by=request.user,
+    )
+    return Response(SafetyReportSerializer(report).data, status=status.HTTP_201_CREATED)
+
+
+# ── Attachments ───────────────────────────────────────────────────────────────
+
+OWNER_FIELDS = ('asset', 'work_order', 'diesel_delivery', 'safety_report')
+
+
+@api_view(['POST'])
+@parser_classes([MultiPartParser])
+def attachments(request):
+    upload = request.data.get('file')
+    attachment_type = request.data.get('type', '').strip()
+    owners = {f'{f}_id': request.data.get(f) for f in OWNER_FIELDS if request.data.get(f)}
+
+    if not upload or not attachment_type:
+        return Response({'detail': 'file and type are required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if len(owners) != 1:
+        return Response(
+            {'detail': f'Exactly one of {", ".join(OWNER_FIELDS)} is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    saved_path = default_storage.save(f'attachments/{upload.name}', upload)
+    file_url = request.build_absolute_uri(default_storage.url(saved_path))
+
+    attachment = Attachment.objects.create(file_url=file_url, type=attachment_type, **owners)
+    return Response(AttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)

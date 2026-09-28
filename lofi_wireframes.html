@@ -1,0 +1,716 @@
+<title>Redline Wireframes</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --paper: #F4F2ED;
+    --panel: #FFFFFF;
+    --bezel: #2A2723;
+    --ink: #262320;
+    --ink-muted: #8B8579;
+    --ink-faint: #B6B0A4;
+    --wire-border: #C7C1B6;
+    --wire-fill: #EFEDE7;
+    --wire-fill-strong: #E2DED5;
+    --redline: #B23A2A;
+    --redline-strong: #8F2E21;
+    --redline-tint: #F8E7E3;
+    --chip-bg: #FFFFFF;
+    --divider: #DEDAD1;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #1B1917;
+      --panel: #242220;
+      --bezel: #0E0D0C;
+      --ink: #ECE8E1;
+      --ink-muted: #9C948A;
+      --ink-faint: #635D54;
+      --wire-border: #4B453C;
+      --wire-fill: #302D28;
+      --wire-fill-strong: #3B3730;
+      --redline: #DE8672;
+      --redline-strong: #E89A87;
+      --redline-tint: #3A2620;
+      --chip-bg: #2E2B27;
+      --divider: #3A362F;
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #1B1917;
+    --panel: #242220;
+    --bezel: #0E0D0C;
+    --ink: #ECE8E1;
+    --ink-muted: #9C948A;
+    --ink-faint: #635D54;
+    --wire-border: #4B453C;
+    --wire-fill: #302D28;
+    --wire-fill-strong: #3B3730;
+    --redline: #DE8672;
+    --redline-strong: #E89A87;
+    --redline-tint: #3A2620;
+    --chip-bg: #2E2B27;
+    --divider: #3A362F;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    padding-inline: 24px;
+    padding-block: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  .masthead {
+    max-width: 720px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--redline);
+    font-weight: 600;
+  }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 38px);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .masthead p {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-muted);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    padding: 14px 18px;
+    background: var(--panel);
+    border: 1px solid var(--divider);
+    border-radius: 10px;
+    width: fit-content;
+    max-width: 100%;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--ink-muted);
+  }
+
+  .swatch {
+    width: 22px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .swatch.existing { background: var(--wire-fill); border: 1.5px solid var(--wire-border); }
+  .swatch.new { background: var(--redline-tint); border: 1.5px dashed var(--redline); }
+
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+    gap: 32px;
+    max-width: 1400px;
+  }
+
+  .frame-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .frame-heading {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .frame-num {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--redline);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+
+  .frame-title { font-size: 16px; font-weight: 600; }
+
+  .frame-file {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  .phone {
+    width: 250px;
+    background: var(--bezel);
+    border-radius: 26px;
+    padding: 8px;
+    box-shadow: 0 12px 24px -12px rgba(0,0,0,0.35);
+  }
+
+  .screen {
+    background: var(--panel);
+    border-radius: 18px;
+    padding: 12px 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 60px;
+  }
+
+  .statusbar {
+    height: 4px;
+    width: 40%;
+    background: var(--wire-border);
+    border-radius: 2px;
+    margin: 0 auto 2px;
+  }
+
+  .w-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .w-back {
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--wire-border);
+    border-radius: 5px;
+    flex-shrink: 0;
+  }
+
+  .w-title {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink);
+    flex: 1;
+  }
+
+  .w-pill {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    color: var(--ink-muted);
+    background: var(--wire-fill);
+    border: 1px solid var(--wire-border);
+    border-radius: 20px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+
+  .w-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .w-card {
+    background: var(--wire-fill);
+    border: 1px solid var(--wire-border);
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+
+  .w-card .label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    display: block;
+  }
+
+  .w-card .value {
+    font-size: 10.5px;
+    color: var(--ink);
+    display: block;
+    margin-top: 1px;
+  }
+
+  .w-block {
+    background: var(--wire-fill);
+    border: 1px solid var(--wire-border);
+    border-radius: 8px;
+    padding: 8px 9px;
+  }
+
+  .w-block.new {
+    background: var(--redline-tint);
+    border: 1.5px dashed var(--redline);
+  }
+
+  .w-block-label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 6px;
+  }
+
+  .w-block.new .w-block-label { color: var(--redline-strong); }
+
+  .badge-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: var(--redline);
+    color: #fff;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8.5px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .w-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--divider);
+    font-size: 10px;
+  }
+  .w-row:last-child { border-bottom: none; }
+
+  .w-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--wire-border);
+    flex-shrink: 0;
+  }
+
+  .w-check {
+    width: 12px; height: 12px;
+    border: 1.5px solid var(--wire-border);
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+  .w-check.checked { background: var(--wire-fill-strong); }
+
+  .w-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .w-field .label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+  }
+  .w-input {
+    height: 20px;
+    background: var(--panel);
+    border: 1px solid var(--wire-border);
+    border-radius: 5px;
+  }
+  .w-input.filled {
+    display: flex;
+    align-items: center;
+    padding: 0 7px;
+    font-size: 10px;
+    color: var(--ink);
+  }
+  .w-textarea {
+    height: 30px;
+    background: var(--panel);
+    border: 1px solid var(--wire-border);
+    border-radius: 5px;
+  }
+
+  .w-btn {
+    height: 24px;
+    border-radius: 6px;
+    background: var(--wire-fill-strong);
+    border: 1px solid var(--wire-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9.5px;
+    color: var(--ink);
+    gap: 6px;
+    text-align: center;
+  }
+  .w-btn.primary {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--panel);
+  }
+  .w-btn.ghost {
+    background: transparent;
+    border: 1px dashed var(--wire-border);
+  }
+
+  .w-btn-row { display: flex; flex-direction: column; gap: 6px; }
+
+  .w-segmented {
+    display: flex;
+    gap: 4px;
+  }
+  .w-seg {
+    flex: 1;
+    height: 20px;
+    border: 1px solid var(--wire-border);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8px;
+    color: var(--ink-muted);
+  }
+  .w-seg.active { background: var(--wire-fill-strong); color: var(--ink); font-weight: 600; }
+
+  .status-chip {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 8px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--wire-fill);
+    border: 1px solid var(--wire-border);
+    color: var(--ink-muted);
+    white-space: nowrap;
+  }
+
+  .annotations {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    max-width: 250px;
+  }
+
+  .annotations li {
+    display: flex;
+    gap: 8px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-muted);
+  }
+
+  .annotations .num {
+    flex-shrink: 0;
+    width: 15px; height: 15px;
+    margin-top: 1px;
+    border-radius: 50%;
+    background: var(--redline);
+    color: #fff;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 9px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .annotations strong { color: var(--ink); font-weight: 600; }
+
+  footer {
+    max-width: 640px;
+    padding-top: 8px;
+    border-top: 1px solid var(--divider);
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    line-height: 1.6;
+  }
+</style>
+
+<div class="masthead">
+  <span class="eyebrow">Technician app — Screen 2 additions</span>
+  <h1>Redline Wireframes</h1>
+  <p>
+    Layout and flow for the technician tasks not covered by the current build: diesel delivery,
+    diesel/run-hour readings, spare parts requests and usage logging, and safety/HSE reports.
+    Deliberately unstyled — structure and copy only, no color or type treatment. Content shown is
+    the real seeded dev data (station LOS-A001, Generator Set A) so field names and lengths are
+    realistic.
+  </p>
+</div>
+
+<div class="legend">
+  <div class="legend-item"><span class="swatch existing"></span> Existing, unchanged</div>
+  <div class="legend-item"><span class="swatch new"></span> New in this phase</div>
+</div>
+
+<div class="gallery">
+
+  <!-- 1: Station Detail -->
+  <div class="frame-card">
+    <div class="frame-heading">
+      <span class="frame-num">01 · Modified</span>
+      <h3 class="frame-title">Station Detail</h3>
+      <span class="frame-file">WorkOrderDetailScreen.tsx</span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"></div>
+        <div class="w-header">
+          <div class="w-back"></div>
+          <span class="w-title">LOS-A001</span>
+          <span class="w-pill">Ongoing</span>
+        </div>
+        <div class="w-grid">
+          <div class="w-card"><span class="label">Base station ID</span><span class="value">LOS-A001</span></div>
+          <div class="w-card"><span class="label">Classification</span><span class="value">Platinum</span></div>
+          <div class="w-card"><span class="label">Client</span><span class="value">MTN, Airtel</span></div>
+          <div class="w-card"><span class="label">Manager</span><span class="value">Funke Adeyemi</span></div>
+        </div>
+        <div class="w-block">
+          <div class="w-block-label">Assets</div>
+          <div class="w-row"><span class="w-dot"></span> Generator Set A</div>
+          <div class="w-row"><span class="w-dot"></span> Air Conditioning Unit</div>
+          <div class="w-row"><span class="w-dot"></span> Solar Array A</div>
+          <div class="w-row"><span class="w-dot"></span> Site Janitorial</div>
+        </div>
+        <div class="w-block new">
+          <div class="w-block-label"><span class="badge-num">1</span> Site actions</div>
+          <div class="w-btn-row">
+            <div class="w-btn ghost">+ Log diesel delivery</div>
+            <div class="w-btn ghost">+ Request parts</div>
+            <div class="w-btn ghost">+ Log part usage</div>
+            <div class="w-btn ghost">+ Report safety issue</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ol class="annotations">
+      <li><span class="num">1</span> Available any time — not gated on an active maintenance session, since deliveries and hazards happen outside a visit. <strong>Hidden once the work order is locked</strong> (submitted, after the 6pm cutoff).</li>
+    </ol>
+  </div>
+
+  <!-- 2: Asset Maintenance -->
+  <div class="frame-card">
+    <div class="frame-heading">
+      <span class="frame-num">02 · Modified</span>
+      <h3 class="frame-title">Asset Maintenance</h3>
+      <span class="frame-file">AssetMaintenanceScreen.tsx</span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"></div>
+        <div class="w-header">
+          <div class="w-back"></div>
+          <span class="w-title">Generator Set A</span>
+        </div>
+        <div class="w-block new">
+          <div class="w-block-label"><span class="badge-num">2</span> Readings</div>
+          <div class="w-row">
+            <span class="w-field" style="flex:1">
+              <span class="label">Run hours</span>
+              <span class="w-input filled">12,480</span>
+            </span>
+            <span class="w-field" style="flex:1">
+              <span class="label">Diesel level (L)</span>
+              <span class="w-input filled">90</span>
+            </span>
+          </div>
+          <div class="w-btn" style="margin-top:6px">Save reading</div>
+        </div>
+        <div class="w-block">
+          <div class="w-block-label">Checklist</div>
+          <div class="w-row"><span class="w-check checked"></span> Visual inspection — no leaks?</div>
+          <div class="w-row"><span class="w-check checked"></span> Oil level topped up?</div>
+          <div class="w-row"><span class="w-check"></span> Load test performed?</div>
+        </div>
+        <div class="w-block">
+          <div class="w-block-label">Outstanding issues</div>
+          <div class="w-row"><span class="w-dot"></span> Oil level critically low</div>
+        </div>
+      </div>
+    </div>
+    <ol class="annotations">
+      <li><span class="num">2</span> Shown only for assets whose category has defined readings — currently <strong>Generator</strong> (run hours + diesel level). Hidden for categories without one.</li>
+    </ol>
+  </div>
+
+  <!-- 3: Diesel Delivery -->
+  <div class="frame-card">
+    <div class="frame-heading">
+      <span class="frame-num">03 · New</span>
+      <h3 class="frame-title">Diesel Delivery</h3>
+      <span class="frame-file">DieselDeliveryScreen.tsx</span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"></div>
+        <div class="w-header">
+          <div class="w-back"></div>
+          <span class="w-title">Log diesel delivery</span>
+        </div>
+        <div class="w-block new">
+          <div class="w-block-label"><span class="badge-num">3</span> LOS-A001 · Victoria Island Alpha</div>
+          <div class="w-field"><span class="label">Quantity delivered (L)</span><span class="w-input filled">200</span></div>
+          <div class="w-field" style="margin-top:6px"><span class="label">Supplier</span><span class="w-input filled">Lagos Fuel Depot ▾</span></div>
+          <div class="w-row" style="border:none; padding-top:6px">
+            <span class="w-field" style="flex:1"><span class="label">Tank before (mm)</span><span class="w-input filled">150</span></span>
+            <span class="w-field" style="flex:1"><span class="label">Tank after (mm)</span><span class="w-input filled">1500</span></span>
+          </div>
+          <div class="w-btn ghost" style="margin-top:6px">+ Add ticket photo</div>
+          <div class="w-field" style="margin-top:6px"><span class="label">Notes</span><span class="w-textarea"></span></div>
+        </div>
+        <div class="w-btn primary">Save delivery</div>
+      </div>
+    </div>
+    <ol class="annotations">
+      <li><span class="num">3</span> Supplier is optional, drawn from the <strong>Vendor</strong> picker. Tank levels are dipstick depth readings in millimetres, not a percentage. No approval or sign-off step — saving records it.</li>
+    </ol>
+  </div>
+
+  <!-- 4: Part Request -->
+  <div class="frame-card">
+    <div class="frame-heading">
+      <span class="frame-num">04 · New</span>
+      <h3 class="frame-title">Request Parts</h3>
+      <span class="frame-file">PartRequestScreen.tsx</span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"></div>
+        <div class="w-header">
+          <div class="w-back"></div>
+          <span class="w-title">Request parts</span>
+        </div>
+        <div class="w-block new">
+          <div class="w-block-label"><span class="badge-num">4</span> New request</div>
+          <div class="w-field"><span class="label">Part</span><span class="w-input filled">Search — "Generator Oil..."</span></div>
+          <div class="w-row" style="border:none; padding-top:6px">
+            <span class="w-field" style="flex:1"><span class="label">Quantity</span><span class="w-input filled">2</span></span>
+            <span class="w-field" style="flex:1"><span class="label">Asset (optional)</span><span class="w-input filled">Generator Set A</span></span>
+          </div>
+          <div class="w-field" style="margin-top:6px"><span class="label">Reason</span><span class="w-textarea"></span></div>
+          <div class="w-btn primary" style="margin-top:6px">Submit request</div>
+        </div>
+        <div class="w-block">
+          <div class="w-block-label">My requests</div>
+          <div class="w-row">
+            <span style="flex:1">Generator Oil Filter ×2</span>
+            <span class="status-chip">Requested</span>
+          </div>
+          <div class="w-btn" style="margin-top:4px">Mark received</div>
+        </div>
+      </div>
+    </div>
+    <ol class="annotations">
+      <li><span class="num">4</span> No approval workflow — status moves straight from <strong>Requested → Received</strong> when the technician confirms the parts arrived.</li>
+    </ol>
+  </div>
+
+  <!-- 5: Part Usage Log -->
+  <div class="frame-card">
+    <div class="frame-heading">
+      <span class="frame-num">05 · New</span>
+      <h3 class="frame-title">Part Usage Log</h3>
+      <span class="frame-file">PartUsageScreen.tsx</span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"></div>
+        <div class="w-header">
+          <div class="w-back"></div>
+          <span class="w-title">Log part usage</span>
+        </div>
+        <div class="w-block new">
+          <div class="w-block-label"><span class="badge-num">5</span> Part used</div>
+          <div class="w-field"><span class="label">Part</span><span class="w-input filled">Search — "Generator Oil..."</span></div>
+          <div class="w-row" style="border:none; padding-top:6px">
+            <span class="w-field" style="flex:1"><span class="label">Quantity used</span><span class="w-input filled">1</span></span>
+            <span class="w-field" style="flex:1"><span class="label">Asset</span><span class="w-input filled">Generator Set A</span></span>
+          </div>
+          <div class="w-field" style="margin-top:6px"><span class="label">Notes (optional)</span><span class="w-textarea"></span></div>
+          <div class="w-btn primary" style="margin-top:6px">Log usage</div>
+        </div>
+        <div class="w-block">
+          <div class="w-block-label">Logged this visit</div>
+          <div class="w-row">
+            <span style="flex:1">Generator Oil Filter ×1</span>
+            <span class="status-chip">Generator Set A</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <ol class="annotations">
+      <li><span class="num">5</span> Separate from a <strong>parts request</strong> — this records a part that was actually installed/used (e.g. an oil filter changed during PM), not one being ordered. Asset is required here, since usage is tied to what it went into.</li>
+    </ol>
+  </div>
+
+  <!-- 6: Safety Report -->
+  <div class="frame-card">
+    <div class="frame-heading">
+      <span class="frame-num">06 · New</span>
+      <h3 class="frame-title">Safety Report</h3>
+      <span class="frame-file">SafetyReportScreen.tsx</span>
+    </div>
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"></div>
+        <div class="w-header">
+          <div class="w-back"></div>
+          <span class="w-title">Report safety issue</span>
+        </div>
+        <div class="w-block new">
+          <div class="w-block-label"><span class="badge-num">6</span> New report</div>
+          <div class="w-field"><span class="label">Type</span></div>
+          <div class="w-segmented">
+            <div class="w-seg">Incident</div>
+            <div class="w-seg">Near miss</div>
+            <div class="w-seg active">Hazard</div>
+          </div>
+          <div class="w-field" style="margin-top:6px"><span class="label">Severity</span><span class="w-input filled">Medium ▾</span></div>
+          <div class="w-field" style="margin-top:6px"><span class="label">Description</span><span class="w-textarea"></span></div>
+          <div class="w-btn ghost" style="margin-top:6px">+ Add photo</div>
+          <div class="w-btn primary" style="margin-top:6px">Submit report</div>
+        </div>
+      </div>
+    </div>
+    <ol class="annotations">
+      <li><span class="num">6</span> No sign-off step. Description example: "Loose cable trunking cover near generator bay — trip hazard."</li>
+    </ol>
+  </div>
+
+</div>
+
+<footer>
+  Backend for all six flows is live (models, endpoints, tests, seed data), including a technician-facing
+  endpoint and required <code>asset</code> field added to the existing <code>PartUsage</code> model for
+  frame 05. Diesel delivery tank levels are recorded as millimetre dipstick readings, not a percentage.
+  Hi-fi build is in progress, matching <code>hifi_mockups.html</code>'s visual style.
+</footer>

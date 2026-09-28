@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CMMS Field App — Hi-Fi Mockups (Field Safety palette)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --fs-primary:#0F766E; --fs-primary-tint:#E6F2F0;
+    --fs-accent:#EA580C; --fs-accent-tint:#FDECE3;
+    --fs-bg:#FAFAF9; --fs-surface:#FFFFFF; --fs-work-bg:#F2F7F6;
+    --fs-border:#EDEBE8; --fs-border-strong:#DEDBD6;
+    --fs-text:#1C1917; --fs-muted:#78716C;
+    --fs-notstarted:#78716C; --fs-notstarted-tint:#F1EFED;
+    --fs-ongoing:#92610A; --fs-ongoing-tint:#FDF3D8;
+    --fs-complete:#166534; --fs-complete-tint:#E3F5E9;
+    --fs-triggered:#B91C1C; --fs-triggered-tint:#FCE8E8;
+    --fs-resolved:#57534E; --fs-resolved-tint:#F1EFED;
+    --fs-danger:#B91C1C; --fs-danger-tint:#FCE8E8;
+    --fs-open:#9A3412; --fs-open-tint:#FDECE3;
+    --fs-inprogress:#92610A; --fs-inprogress-tint:#FDF3D8;
+    --fs-critical:#B91C1C; --fs-critical-tint:#FCE8E8;
+    --fs-medium:#92610A; --fs-medium-tint:#FDF3D8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 20px 100px;
+    background: #EDEAE5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--fs-text);
+  }
+  h1 { text-align:center; font-size:22px; font-weight:600; margin-bottom:4px; }
+  p.subtitle { text-align:center; color:var(--fs-muted); font-size:13px; margin-top:0; margin-bottom:48px; }
+  h2.section-title {
+    font-size: 13px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;
+    color: var(--fs-muted); margin: 56px 0 6px; text-align:center;
+  }
+  h2.section-title:first-of-type { margin-top: 0; }
+  h3.screen-title { text-align:center; font-size:16px; font-weight:500; margin: 0 0 18px; }
+  .row { display:flex; flex-wrap:wrap; gap:28px; justify-content:center; margin-bottom:8px; }
+  .frame-phone {
+    background:#DAD7D1; border-radius:32px; padding:12px; width:380px; flex-shrink:0;
+  }
+  .frame-phone-inner { background:var(--fs-bg); border-radius:22px; overflow:hidden; min-height:640px; }
+  .frame-tablet {
+    background:#DAD7D1; border-radius:20px; padding:12px; width:900px; max-width:100%; flex-shrink:0;
+  }
+  .frame-tablet-inner { background:var(--fs-bg); border-radius:16px; overflow:hidden; min-height:560px; }
+  .caption { max-width:380px; margin: 0 auto 40px; font-size:12px; color:var(--fs-muted); text-align:center; }
+  .caption-wide { max-width:700px; margin: 0 auto 40px; font-size:12px; color:var(--fs-muted); text-align:center; }
+</style>
+</head>
+<body>
+
+<h1>CMMS Field App — Hi-Fi Mockups</h1>
+<p class="subtitle">Field Safety color palette · Mobile + Tablet split-view</p>
+
+<h2 class="section-title">Mobile — Routine, Alarms, Tasks tabs</h2>
+<div class="row">
+
+  <div>
+    <h3 class="screen-title">Screen 1 — Routine tab</h3>
+    <div class="frame-phone"><div class="frame-phone-inner">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500; color:var(--fs-text);">
+        <span>9:41</span>
+        <div style="display:flex; align-items:center; gap:5px;">
+          <i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px 4px;">
+        <span style="font-size:20px; font-weight:500;">Cluster A</span>
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-refresh" style="font-size:16px; color:var(--fs-muted);"></i></div>
+      </div>
+      <div style="display:flex; gap:8px; padding:16px 20px 4px; overflow-x:auto;">
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-tools" style="font-size:14px; color:var(--fs-primary);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">2/4 maintenance</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-triggered-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:14px; color:var(--fs-triggered);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">1/2 resolved</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-accent-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-clipboard-list" style="font-size:14px; color:var(--fs-accent);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">4 open tasks</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:16px; padding:18px 20px 0;">
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid var(--fs-primary);"><span style="font-size:14px; font-weight:500;">Routine</span></div>
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid transparent;"><span style="font-size:14px; font-weight:500; color:var(--fs-muted);">Alarms</span></div>
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid transparent;"><span style="font-size:14px; font-weight:500; color:var(--fs-muted);">Tasks</span></div>
+      </div>
+      <div style="padding:8px 20px 20px;">
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="width:40px; height:40px; border-radius:12px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-antenna" style="font-size:19px; color:var(--fs-primary);"></i></div>
+          <div style="flex:1;"><div style="font-size:15px; font-weight:500;">OY0735</div><div style="font-size:12px; color:var(--fs-muted);">4 assets</div></div>
+          <span style="background:var(--fs-ongoing-tint); color:var(--fs-ongoing); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Ongoing</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="width:40px; height:40px; border-radius:12px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-antenna" style="font-size:19px; color:var(--fs-primary);"></i></div>
+          <div style="flex:1;"><div style="font-size:15px; font-weight:500;">OY0812</div><div style="font-size:12px; color:var(--fs-muted);">2 assets</div></div>
+          <span style="background:var(--fs-notstarted-tint); color:var(--fs-notstarted); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Not started</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="width:40px; height:40px; border-radius:12px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-antenna" style="font-size:19px; color:var(--fs-primary);"></i></div>
+          <div style="flex:1;"><div style="font-size:15px; font-weight:500;">OY0999</div><div style="font-size:12px; color:var(--fs-muted);">3 assets</div></div>
+          <span style="background:var(--fs-complete-tint); color:var(--fs-complete); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Complete</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:14px; opacity:0.6;">
+          <div style="width:40px; height:40px; border-radius:12px; background:var(--fs-notstarted-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-antenna" style="font-size:19px; color:var(--fs-muted);"></i></div>
+          <div style="flex:1;"><div style="font-size:15px; font-weight:500;">OY1200</div><div style="font-size:12px; color:var(--fs-muted);">2 assets</div></div>
+          <div style="display:flex; align-items:center; gap:6px;"><i class="ti ti-lock" style="font-size:13px; color:var(--fs-muted);"></i><span style="background:var(--fs-complete-tint); color:var(--fs-complete); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Complete</span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Screen 1 — Alarms tab</h3>
+    <div class="frame-phone"><div class="frame-phone-inner">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500;">
+        <span>9:41</span>
+        <div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px 4px;">
+        <span style="font-size:20px; font-weight:500;">Cluster A</span>
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-refresh" style="font-size:16px; color:var(--fs-muted);"></i></div>
+      </div>
+      <div style="display:flex; gap:8px; padding:16px 20px 4px; overflow-x:auto;">
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-tools" style="font-size:14px; color:var(--fs-primary);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">2/4 maintenance</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-triggered-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:14px; color:var(--fs-triggered);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">1/2 resolved</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-accent-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-clipboard-list" style="font-size:14px; color:var(--fs-accent);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">4 open tasks</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:16px; padding:18px 20px 0;">
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid transparent;"><span style="font-size:14px; font-weight:500; color:var(--fs-muted);">Routine</span></div>
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid var(--fs-primary);"><span style="font-size:14px; font-weight:500;">Alarms</span></div>
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid transparent;"><span style="font-size:14px; font-weight:500; color:var(--fs-muted);">Tasks</span></div>
+      </div>
+      <div style="padding:14px 20px 8px; font-size:12px; color:var(--fs-muted);">2 alarms today</div>
+      <div style="padding:0 20px 20px;">
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="width:40px; height:40px; border-radius:12px; background:var(--fs-triggered-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:19px; color:var(--fs-triggered);"></i></div>
+          <div style="flex:1;"><div style="font-size:15px; font-weight:500;">OY0812</div><div style="font-size:12px; color:var(--fs-muted);">2 assets</div></div>
+          <span style="background:var(--fs-triggered-tint); color:var(--fs-triggered); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Triggered</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:14px; opacity:0.6;">
+          <div style="width:40px; height:40px; border-radius:12px; background:var(--fs-resolved-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:19px; color:var(--fs-muted);"></i></div>
+          <div style="flex:1;"><div style="font-size:15px; font-weight:500;">OY1300</div><div style="font-size:12px; color:var(--fs-muted);">2 assets</div></div>
+          <div style="display:flex; align-items:center; gap:6px;"><i class="ti ti-lock" style="font-size:13px; color:var(--fs-muted);"></i><span style="background:var(--fs-resolved-tint); color:var(--fs-resolved); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Resolved</span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Screen 1 — Tasks tab</h3>
+    <div class="frame-phone"><div class="frame-phone-inner">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500;">
+        <span>9:41</span>
+        <div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 20px 4px;">
+        <span style="font-size:20px; font-weight:500;">Cluster A</span>
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-refresh" style="font-size:16px; color:var(--fs-muted);"></i></div>
+      </div>
+      <div style="display:flex; gap:8px; padding:16px 20px 4px; overflow-x:auto;">
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-tools" style="font-size:14px; color:var(--fs-primary);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">2/4 maintenance</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-triggered-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:14px; color:var(--fs-triggered);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">1/2 resolved</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:7px; background:var(--fs-surface); border-radius:999px; padding:7px 14px 7px 7px; flex-shrink:0;">
+          <div style="width:26px; height:26px; border-radius:9px; background:var(--fs-accent-tint); display:flex; align-items:center; justify-content:center;"><i class="ti ti-clipboard-list" style="font-size:14px; color:var(--fs-accent);"></i></div>
+          <span style="font-size:13px; font-weight:500; white-space:nowrap;">4 open tasks</span>
+        </div>
+      </div>
+      <div style="display:flex; gap:16px; padding:18px 20px 0;">
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid transparent;"><span style="font-size:14px; font-weight:500; color:var(--fs-muted);">Routine</span></div>
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid transparent;"><span style="font-size:14px; font-weight:500; color:var(--fs-muted);">Alarms</span></div>
+        <div style="text-align:center; padding-bottom:10px; border-bottom:2px solid var(--fs-primary);"><span style="font-size:14px; font-weight:500;">Tasks</span></div>
+      </div>
+      <div style="padding:14px 20px 0; font-size:12px; color:var(--fs-muted);">4 open work orders</div>
+      <div style="padding:12px 20px 20px;">
+        <div style="background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-clipboard-list" style="font-size:15px; color:var(--fs-muted);"></i><span style="font-size:12px; font-weight:500; color:var(--fs-muted);">WO-0231 · OY0735 · AC unit</span></div><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i></div>
+          <div style="font-size:14px; margin-bottom:10px; line-height:1.5;">Condenser fan bearing worn, flagged on last visit</div>
+          <div style="display:flex; gap:8px;"><span style="background:var(--fs-critical-tint); color:var(--fs-critical); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Critical</span><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Open</span></div>
+        </div>
+        <div style="background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-clipboard-list" style="font-size:15px; color:var(--fs-muted);"></i><span style="font-size:12px; font-weight:500; color:var(--fs-muted);">WO-0198 · OY0999 · Generator 2</span></div><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i></div>
+          <div style="font-size:14px; margin-bottom:10px; line-height:1.5;">Fuel line fitting slightly loose, minor seepage noted</div>
+          <div style="display:flex; gap:8px;"><span style="background:var(--fs-medium-tint); color:var(--fs-medium); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Medium</span><span style="background:var(--fs-inprogress-tint); color:var(--fs-inprogress); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">In progress</span></div>
+        </div>
+        <div style="background:var(--fs-surface); border-radius:14px; padding:14px; margin-bottom:10px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-clipboard-list" style="font-size:15px; color:var(--fs-muted);"></i><span style="font-size:12px; font-weight:500; color:var(--fs-muted);">WO-0225 · OY0735 · Rectifier</span></div><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i></div>
+          <div style="font-size:14px; margin-bottom:10px; line-height:1.5;">Display panel flickers intermittently</div>
+          <div style="display:flex; gap:8px;"><span style="background:var(--fs-medium-tint); color:var(--fs-medium); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Low</span><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Open</span></div>
+        </div>
+        <div style="background:var(--fs-surface); border-radius:14px; padding:14px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;"><div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-clipboard-list" style="font-size:15px; color:var(--fs-muted);"></i><span style="font-size:12px; font-weight:500; color:var(--fs-muted);">WO-0212 · OY0812 · Battery bank</span></div><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i></div>
+          <div style="font-size:14px; margin-bottom:10px; line-height:1.5;">Terminal corrosion on cell 3, needs cleaning</div>
+          <div style="display:flex; gap:8px;"><span style="background:var(--fs-medium-tint); color:var(--fs-medium); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Medium</span><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Open</span></div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<h2 class="section-title">Mobile — Station detail &amp; asset checklist</h2>
+<div class="row">
+
+  <div>
+    <h3 class="screen-title">Screen 2 — Station detail</h3>
+    <div class="frame-phone"><div class="frame-phone-inner">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500;">
+        <span>9:41</span><div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 4px;">
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-arrow-left" style="font-size:16px;"></i></div>
+        <span style="flex:1; font-size:19px; font-weight:500;">OY0735</span>
+        <span style="background:var(--fs-ongoing-tint); color:var(--fs-ongoing); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Ongoing</span>
+      </div>
+      <div style="padding:16px 20px 0;">
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px;">
+          <div style="background:var(--fs-surface); border-radius:14px; padding:12px 14px;"><div style="font-size:11px; color:var(--fs-muted); margin-bottom:3px;">Base station ID</div><div style="font-size:14px; font-weight:500;">OY0735</div></div>
+          <div style="background:var(--fs-surface); border-radius:14px; padding:12px 14px;"><div style="font-size:11px; color:var(--fs-muted); margin-bottom:3px;">Site classification</div><div style="font-size:14px; font-weight:500;">Urban</div></div>
+          <div style="background:var(--fs-surface); border-radius:14px; padding:12px 14px;"><div style="font-size:11px; color:var(--fs-muted); margin-bottom:3px;">Client</div><div style="font-size:14px; font-weight:500;">MTN</div></div>
+          <div style="background:var(--fs-surface); border-radius:14px; padding:12px 14px;"><div style="font-size:11px; color:var(--fs-muted); margin-bottom:3px;">Manager</div><div style="font-size:14px; font-weight:500;">A. Musa</div></div>
+        </div>
+      </div>
+      <div style="padding:12px 20px 0; font-size:12px; color:var(--fs-muted);">Started 08:12 · Last edited 08:40</div>
+      <div style="padding:18px 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Assets</div>
+      <div style="padding:0 20px 8px;">
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:13px 14px; margin-bottom:8px;">
+          <div style="width:24px; height:24px; border-radius:50%; background:var(--fs-primary); display:flex; align-items:center; justify-content:center;"><i class="ti ti-check" style="font-size:14px; color:#FFFFFF;"></i></div>
+          <span style="flex:1; font-size:14px;">Generator 1</span><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:13px 14px; margin-bottom:8px;">
+          <div style="width:24px; height:24px; border-radius:50%; border:1.5px solid var(--fs-border);"></div>
+          <span style="flex:1; font-size:14px;">Generator 2</span><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:13px 14px; margin-bottom:8px;">
+          <div style="width:24px; height:24px; border-radius:50%; border:1.5px solid var(--fs-border);"></div>
+          <span style="flex:1; font-size:14px;">AC unit</span>
+          <span style="background:var(--fs-accent-tint); color:var(--fs-accent); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px; margin-right:2px;">1 issue</span>
+          <i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; background:var(--fs-surface); border-radius:14px; padding:13px 14px;">
+          <div style="width:24px; height:24px; border-radius:50%; border:1.5px solid var(--fs-border);"></div>
+          <span style="flex:1; font-size:14px;">Rectifier</span><i class="ti ti-chevron-right" style="font-size:16px; color:var(--fs-muted);"></i>
+        </div>
+      </div>
+      <div style="padding:16px 20px 24px; display:flex; align-items:center; gap:8px;"><i class="ti ti-info-circle" style="font-size:15px; color:var(--fs-muted);"></i><span style="font-size:13px;">Maintenance in progress. Tap back to end session.</span></div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Screen 3 — Asset checklist</h3>
+    <div class="frame-phone"><div class="frame-phone-inner">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500;">
+        <span>9:41</span><div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 4px;">
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-arrow-left" style="font-size:16px;"></i></div>
+        <span style="flex:1; font-size:19px; font-weight:500;">AC unit</span><span style="font-size:11px; color:var(--fs-muted);">2 of 4</span>
+      </div>
+      <div style="padding:18px 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Checklist</div>
+      <div style="margin:0 20px 20px; background:var(--fs-surface); border-radius:14px; padding:6px 16px;">
+        <div style="padding:9px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Check refrigerant level</div>
+        <div style="padding:9px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Inspect compressor</div>
+        <div style="padding:9px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Clean air filter</div>
+        <div style="padding:9px 0; font-size:14px;">Test thermostat calibration</div>
+      </div>
+      <div style="padding:0 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted);">Any issues found? <span style="color:var(--fs-accent);">*</span></div>
+      <div style="display:flex; gap:10px; padding:0 20px 20px;">
+        <div style="flex:1; text-align:center; padding:11px; border-radius:12px; background:var(--fs-surface); border:1px solid var(--fs-border); font-size:14px; font-weight:500;">No</div>
+        <div style="flex:1; text-align:center; padding:11px; border-radius:12px; background:var(--fs-primary); font-size:14px; font-weight:500; color:#FFFFFF;">Yes</div>
+      </div>
+      <div style="padding:0 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted);">Select all that apply <span style="color:var(--fs-accent);">*</span></div>
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; padding:0 20px 20px;">
+        <div style="display:flex; align-items:center; gap:8px; background:var(--fs-surface); border:1px solid var(--fs-border); border-radius:10px; padding:9px 10px;"><div style="width:16px; height:16px; border-radius:4px; border:1.5px solid var(--fs-border);"></div><span style="font-size:12px;">No issues found</span></div>
+        <div style="display:flex; align-items:center; gap:8px; background:var(--fs-primary-tint); border:1px solid var(--fs-primary); border-radius:10px; padding:9px 10px;"><div style="width:16px; height:16px; border-radius:4px; background:var(--fs-primary); display:flex; align-items:center; justify-content:center;"><i class="ti ti-check" style="font-size:11px; color:#FFFFFF;"></i></div><span style="font-size:12px;">Noisy</span></div>
+        <div style="display:flex; align-items:center; gap:8px; background:var(--fs-surface); border:1px solid var(--fs-border); border-radius:10px; padding:9px 10px;"><div style="width:16px; height:16px; border-radius:4px; border:1.5px solid var(--fs-border);"></div><span style="font-size:12px;">Leaking</span></div>
+        <div style="display:flex; align-items:center; gap:8px; background:var(--fs-surface); border:1px solid var(--fs-border); border-radius:10px; padding:9px 10px;"><div style="width:16px; height:16px; border-radius:4px; border:1.5px solid var(--fs-border);"></div><span style="font-size:12px;">Overheating</span></div>
+      </div>
+      <div style="padding:0 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted);">Comments</div>
+      <div style="margin:0 20px 20px; background:var(--fs-surface); border:1px solid var(--fs-border); border-radius:12px; padding:10px 12px; font-size:13px; line-height:1.5;">Slight rattling noise on startup, may need bracket tightening.</div>
+      <div style="padding:0 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Outstanding issues</div>
+      <div style="margin:0 20px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--fs-surface); border-radius:12px; padding:11px 14px;">
+        <div><div style="font-size:13px; margin-bottom:5px;">Compressor bracket loose, needs tightening</div><span style="background:var(--fs-accent-tint); color:var(--fs-accent); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Medium</span></div>
+        <i class="ti ti-x" style="font-size:15px; color:var(--fs-muted);"></i>
+      </div>
+      <div style="margin:0 20px 22px; text-align:center; padding:10px; border:1px dashed var(--fs-border); border-radius:12px; font-size:13px; color:var(--fs-muted);"><i class="ti ti-plus" style="font-size:13px; margin-right:5px;"></i>Add issue</div>
+      <div style="padding:0 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Work orders</div>
+      <div style="margin:0 20px 24px; background:var(--fs-surface); border-radius:14px; padding:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;"><div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-clipboard-list" style="font-size:16px; color:var(--fs-muted);"></i><span style="font-size:13px; font-weight:500;">WO-0231</span></div><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Open</span></div>
+        <div style="font-size:13px; margin-bottom:10px; line-height:1.5;">Condenser fan bearing worn, flagged on last visit</div>
+        <div style="display:flex; align-items:center; justify-content:space-between;"><span style="background:var(--fs-accent-tint); color:var(--fs-accent); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">High priority</span><span style="font-size:12px; font-weight:500; color:var(--fs-primary);">Mark complete</span></div>
+      </div>
+      <div style="padding:0 20px 24px;"><div style="text-align:center; padding:13px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">Next</div></div>
+    </div></div>
+  </div>
+
+</div>
+
+<h2 class="section-title">Mobile — Supporting states</h2>
+<div class="row">
+
+  <div>
+    <h3 class="screen-title">Start maintenance + geofence error</h3>
+    <div class="frame-phone"><div class="frame-phone-inner" style="min-height:500px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500;"><span>9:41</span><div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div></div>
+      <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 4px;">
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-arrow-left" style="font-size:16px;"></i></div>
+        <span style="flex:1; font-size:19px; font-weight:500;">OY0812</span>
+        <span style="background:var(--fs-notstarted-tint); color:var(--fs-notstarted); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Not started</span>
+      </div>
+      <div style="padding:16px 20px 0;">
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px;">
+          <div style="background:var(--fs-surface); border-radius:14px; padding:12px 14px;"><div style="font-size:11px; color:var(--fs-muted); margin-bottom:3px;">Base station ID</div><div style="font-size:14px; font-weight:500;">OY0812</div></div>
+          <div style="background:var(--fs-surface); border-radius:14px; padding:12px 14px;"><div style="font-size:11px; color:var(--fs-muted); margin-bottom:3px;">Site classification</div><div style="font-size:14px; font-weight:500;">Rural</div></div>
+        </div>
+      </div>
+      <div style="margin:20px 20px 12px; background:var(--fs-danger-tint); border-radius:12px; padding:12px 14px; display:flex; gap:10px; align-items:flex-start;"><i class="ti ti-map-pin-off" style="font-size:17px; color:var(--fs-danger); margin-top:1px;"></i><span style="font-size:13px; color:var(--fs-danger); line-height:1.5;">You must be at base station OY0812 to start this maintenance schedule.</span></div>
+      <div style="margin:0 20px 12px; display:flex; align-items:center; gap:10px; background:var(--fs-surface); border-radius:12px; padding:12px 14px;"><div style="width:20px; height:20px; border-radius:6px; border:1.5px solid var(--fs-border);"></div><span style="font-size:13px;">Simulate: I am at this base station</span></div>
+      <div style="padding:4px 20px 24px;"><div style="text-align:center; padding:13px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">Start maintenance</div></div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Resolved alarm + additional notes</h3>
+    <div class="frame-phone"><div class="frame-phone-inner" style="min-height:560px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500;"><span>9:41</span><div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div></div>
+      <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 4px;">
+        <div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border); display:flex; align-items:center; justify-content:center;"><i class="ti ti-arrow-left" style="font-size:16px;"></i></div>
+        <span style="flex:1; font-size:19px; font-weight:500;">OY1300</span>
+        <span style="background:var(--fs-resolved-tint); color:var(--fs-resolved); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Resolved</span>
+      </div>
+      <div style="padding:12px 20px 0; font-size:12px; color:var(--fs-muted);">Started 10:00 · Resolved 10:20</div>
+      <div style="margin:16px 20px 20px; display:flex; align-items:center; gap:8px; background:var(--fs-resolved-tint); border-radius:12px; padding:12px 14px;"><i class="ti ti-lock" style="font-size:15px; color:var(--fs-resolved);"></i><span style="font-size:13px; color:var(--fs-resolved);">View only — alarm resolved.</span></div>
+      <div style="padding:0 20px 8px; font-size:12px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Additional notes</div>
+      <div style="margin:0 20px 10px; background:var(--fs-surface); border-radius:12px; padding:11px 14px;"><div style="font-size:13px; line-height:1.5;">Replaced fuse, tested load. Battery bank still reads slightly low, worth checking next visit.</div><div style="font-size:11px; color:var(--fs-muted); margin-top:6px;">10:22</div></div>
+      <div style="margin:0 20px 20px; display:flex; gap:8px;"><div style="flex:1; background:var(--fs-surface); border:1px solid var(--fs-border); border-radius:10px; padding:10px 12px; font-size:13px; color:var(--fs-muted);">Add a note</div><div style="padding:10px 18px; background:var(--fs-surface); border:1px solid var(--fs-border); border-radius:10px; font-size:13px; font-weight:500;">Add</div></div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Exit-warning modal</h3>
+    <div class="frame-phone"><div class="frame-phone-inner" style="min-height:420px; position:relative;">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 20px 4px; font-size:13px; font-weight:500; opacity:0.4;"><span>9:41</span><div style="display:flex; align-items:center; gap:5px;"><i class="ti ti-antenna-bars-5" style="font-size:14px;"></i><i class="ti ti-wifi" style="font-size:14px;"></i><i class="ti ti-battery-4" style="font-size:15px;"></i></div></div>
+      <div style="display:flex; align-items:center; gap:12px; padding:14px 20px 4px; opacity:0.4;"><div style="width:34px; height:34px; border-radius:50%; background:var(--fs-surface); border:0.5px solid var(--fs-border);"></div><span style="flex:1; font-size:19px; font-weight:500;">OY0735</span></div>
+      <div style="position:absolute; inset:0; background:rgba(28,25,23,0.5); display:flex; align-items:center; justify-content:center; padding:28px;">
+        <div style="background:var(--fs-surface); border-radius:18px; padding:22px 20px; width:100%;">
+          <div style="width:40px; height:40px; border-radius:12px; background:#FDF3D8; display:flex; align-items:center; justify-content:center; margin-bottom:14px;"><i class="ti ti-alert-triangle" style="font-size:19px; color:#92610A;"></i></div>
+          <div style="font-size:15px; font-weight:500; margin-bottom:6px;">Some maintenance tasks have not been completed</div>
+          <div style="font-size:13px; color:var(--fs-muted); margin-bottom:20px; line-height:1.5;">End maintenance anyway? Assets you've already completed will be saved.</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="text-align:center; padding:12px; border-radius:12px; background:var(--fs-surface); border:1px solid var(--fs-border); font-size:14px; font-weight:500;">Continue maintenance</div>
+            <div style="text-align:center; padding:12px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">End maintenance</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Empty states</h3>
+    <div class="frame-phone"><div class="frame-phone-inner" style="min-height:420px; padding:0;">
+      <div style="display:flex; gap:0; height:100%;">
+        <div style="flex:1; border-right:0.5px solid var(--fs-border); display:flex; flex-direction:column;">
+          <div style="padding:16px 18px 8px; font-size:14px; font-weight:500;">Alarms</div>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center;">
+            <div style="width:56px; height:56px; border-radius:16px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center; margin-bottom:14px;"><i class="ti ti-shield-check" style="font-size:26px; color:var(--fs-primary);"></i></div>
+            <div style="font-size:14px; font-weight:500; margin-bottom:4px;">No active alarms</div>
+            <div style="font-size:12px; color:var(--fs-muted); line-height:1.5;">Every base station in this cluster is running normally.</div>
+          </div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column;">
+          <div style="padding:16px 18px 8px; font-size:14px; font-weight:500;">Tasks</div>
+          <div style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center;">
+            <div style="width:56px; height:56px; border-radius:16px; background:var(--fs-primary-tint); display:flex; align-items:center; justify-content:center; margin-bottom:14px;"><i class="ti ti-clipboard-check" style="font-size:26px; color:var(--fs-primary);"></i></div>
+            <div style="font-size:14px; font-weight:500; margin-bottom:4px;">No open work orders</div>
+            <div style="font-size:12px; color:var(--fs-muted); line-height:1.5;">Outstanding issues you log will show up here.</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<h2 class="section-title">Tablet — Split view (Routine)</h2>
+<div class="row">
+  <div class="frame-tablet"><div class="frame-tablet-inner">
+    <div style="background:var(--fs-surface); border-bottom:0.5px solid var(--fs-border);">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 24px 0;">
+        <span style="font-size:17px; font-weight:500;">Cluster A</span>
+        <div style="display:flex; align-items:center; gap:14px;">
+          <div style="display:flex; align-items:center; gap:6px; background:var(--fs-primary-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-primary);display:flex;align-items:center;justify-content:center;"><i class="ti ti-tools" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">2 / 4 done</span></div>
+          <div style="display:flex; align-items:center; gap:6px; background:var(--fs-triggered-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-triggered);display:flex;align-items:center;justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">1 / 2 resolved</span></div>
+          <div style="display:flex; align-items:center; gap:6px; background:var(--fs-accent-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-accent);display:flex;align-items:center;justify-content:center;"><i class="ti ti-clipboard-list" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">4 open tasks</span></div>
+          <div style="width:32px; height:32px; border-radius:50%; background:var(--fs-bg); display:flex; align-items:center; justify-content:center;"><i class="ti ti-user" style="font-size:15px; color:var(--fs-muted);"></i></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:20px; padding:14px 24px 0;">
+        <div style="padding-bottom:10px; border-bottom:2px solid var(--fs-primary); font-size:13px; font-weight:500;">Routine</div>
+        <div style="padding-bottom:10px; border-bottom:2px solid transparent; font-size:13px; font-weight:500; color:var(--fs-muted);">Alarms</div>
+        <div style="padding-bottom:10px; border-bottom:2px solid transparent; font-size:13px; font-weight:500; color:var(--fs-muted);">Tasks</div>
+      </div>
+      <div style="display:flex; gap:8px; padding:12px 24px 16px; overflow-x:auto;">
+        <div style="display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; background:var(--fs-primary); color:#FFFFFF; font-size:13px; font-weight:500;"><span style="width:7px;height:7px;border-radius:50%;background:#FFFFFF;"></span>OY0735</div>
+        <div style="display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid var(--fs-border); font-size:13px; font-weight:500;"><span style="width:7px;height:7px;border-radius:50%;background:var(--fs-notstarted);"></span>OY0812</div>
+        <div style="display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid var(--fs-border); font-size:13px; font-weight:500;"><span style="width:7px;height:7px;border-radius:50%;background:var(--fs-complete);"></span>OY0999</div>
+        <div style="display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid var(--fs-border); font-size:13px; font-weight:500; opacity:0.6;"><span style="width:7px;height:7px;border-radius:50%;background:var(--fs-complete);"></span>OY1200<i class="ti ti-lock" style="font-size:11px;"></i></div>
+      </div>
+    </div>
+    <div style="display:flex;">
+      <div style="width:320px; flex-shrink:0; border-right:1px solid var(--fs-border-strong); background:var(--fs-surface);">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 18px 0;"><span style="font-size:17px; font-weight:500;">OY0735</span><span style="background:var(--fs-ongoing-tint); color:var(--fs-ongoing); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Ongoing</span></div>
+        <div style="padding:14px 18px 0;">
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px;">
+            <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Base station ID</div><div style="font-size:13px; font-weight:500;">OY0735</div></div>
+            <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Classification</div><div style="font-size:13px; font-weight:500;">Urban</div></div>
+            <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Client</div><div style="font-size:13px; font-weight:500;">MTN</div></div>
+            <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Manager</div><div style="font-size:13px; font-weight:500;">A. Musa</div></div>
+          </div>
+        </div>
+        <div style="padding:10px 18px 0; font-size:11px; color:var(--fs-muted);">Started 08:12 · Last edited 08:40</div>
+        <div style="padding:16px 18px 6px; font-size:11px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Assets</div>
+        <div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 18px; background:var(--fs-primary-tint);"><div style="width:22px; height:22px; border-radius:50%; background:var(--fs-primary); display:flex; align-items:center; justify-content:center;"><i class="ti ti-check" style="font-size:12px; color:#FFFFFF;"></i></div><span style="flex:1; font-size:13px; font-weight:500;">Generator 1</span></div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 18px; background:var(--fs-work-bg); border-left:3px solid var(--fs-primary);"><div style="width:22px; height:22px; border-radius:50%; border:1.5px solid var(--fs-border-strong);"></div><span style="flex:1; font-size:13px; font-weight:500;">Generator 2</span><i class="ti ti-chevron-right" style="font-size:14px; color:var(--fs-primary);"></i></div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 18px;"><div style="width:22px; height:22px; border-radius:50%; border:1.5px solid var(--fs-border-strong);"></div><span style="flex:1; font-size:13px;">AC unit</span><span style="background:var(--fs-accent-tint); color:var(--fs-accent); font-size:10px; font-weight:500; padding:2px 8px; border-radius:999px;">1</span></div>
+          <div style="display:flex; align-items:center; gap:10px; padding:10px 18px;"><div style="width:22px; height:22px; border-radius:50%; border:1.5px solid var(--fs-border-strong);"></div><span style="flex:1; font-size:13px;">Rectifier</span></div>
+        </div>
+        <div style="padding:16px 18px; display:flex; align-items:center; gap:8px;"><i class="ti ti-info-circle" style="font-size:14px; color:var(--fs-muted);"></i><span style="font-size:12px;">Maintenance in progress.</span></div>
+      </div>
+      <div style="flex:1; background:var(--fs-work-bg);">
+        <div style="padding:18px 28px; border-bottom:0.5px solid var(--fs-border-strong); background:var(--fs-surface); display:flex; align-items:center; justify-content:space-between;"><span style="font-size:18px; font-weight:500;">Generator 2</span><span style="font-size:12px; color:var(--fs-muted);">Asset 2 of 4</span></div>
+        <div style="padding:22px 28px; max-width:520px;">
+          <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Checklist</div>
+          <div style="background:var(--fs-surface); border-radius:14px; padding:14px 16px; margin-bottom:22px;">
+            <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Check oil level</div>
+            <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Inspect fuel lines</div>
+            <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Test under load</div>
+            <div style="padding:8px 0; font-size:14px;">Clean air filter</div>
+          </div>
+          <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Any issues found? <span style="color:var(--fs-accent);">*</span></div>
+          <div style="display:flex; gap:10px; margin-bottom:22px; max-width:280px;">
+            <div style="flex:1; text-align:center; padding:11px; border-radius:12px; background:var(--fs-surface); border:1px solid var(--fs-border-strong); font-size:14px; font-weight:500;">No</div>
+            <div style="flex:1; text-align:center; padding:11px; border-radius:12px; background:var(--fs-surface); border:1px solid var(--fs-border-strong); font-size:14px; font-weight:500;">Yes</div>
+          </div>
+          <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Comments</div>
+          <div style="background:var(--fs-surface); border:1px solid var(--fs-border-strong); border-radius:12px; padding:10px 12px; margin-bottom:22px; min-height:52px; font-size:13px; color:var(--fs-muted);">Add any comments</div>
+          <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Outstanding issues</div>
+          <div style="text-align:center; padding:12px; border:1px dashed var(--fs-border-strong); border-radius:12px; font-size:13px; color:var(--fs-muted); margin-bottom:22px; background:var(--fs-surface);"><i class="ti ti-plus" style="font-size:13px; margin-right:5px;"></i>Add issue</div>
+          <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Work orders</div>
+          <div style="font-size:13px; color:var(--fs-muted); margin-bottom:24px;">No open work orders for this asset.</div>
+          <div style="max-width:280px;"><div style="text-align:center; padding:13px; border-radius:12px; background:var(--fs-border-strong); font-size:14px; font-weight:500; color:var(--fs-muted);">Next</div></div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+</div>
+
+<h2 class="section-title">Tablet — Alarms and Tasks tabs</h2>
+<div class="row">
+
+  <div>
+    <h3 class="screen-title">Alarms tab split view</h3>
+    <div class="frame-tablet"><div class="frame-tablet-inner">
+      <div style="background:var(--fs-surface); border-bottom:0.5px solid var(--fs-border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 24px 0;">
+          <span style="font-size:17px; font-weight:500;">Cluster A</span>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div style="display:flex; align-items:center; gap:6px; background:var(--fs-primary-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-primary);display:flex;align-items:center;justify-content:center;"><i class="ti ti-tools" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">2 / 4 done</span></div>
+            <div style="display:flex; align-items:center; gap:6px; background:var(--fs-triggered-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-triggered);display:flex;align-items:center;justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">1 / 2 resolved</span></div>
+            <div style="display:flex; align-items:center; gap:6px; background:var(--fs-accent-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-accent);display:flex;align-items:center;justify-content:center;"><i class="ti ti-clipboard-list" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">4 open tasks</span></div>
+            <div style="width:32px; height:32px; border-radius:50%; background:var(--fs-bg); display:flex; align-items:center; justify-content:center;"><i class="ti ti-user" style="font-size:15px; color:var(--fs-muted);"></i></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:20px; padding:14px 24px 0;">
+          <div style="padding-bottom:10px; border-bottom:2px solid transparent; font-size:13px; font-weight:500; color:var(--fs-muted);">Routine</div>
+          <div style="padding-bottom:10px; border-bottom:2px solid var(--fs-primary); font-size:13px; font-weight:500;">Alarms</div>
+          <div style="padding-bottom:10px; border-bottom:2px solid transparent; font-size:13px; font-weight:500; color:var(--fs-muted);">Tasks</div>
+        </div>
+        <div style="display:flex; gap:8px; padding:12px 24px 16px;">
+          <div style="display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; background:var(--fs-primary); color:#FFFFFF; font-size:13px; font-weight:500;"><span style="width:7px;height:7px;border-radius:50%;background:#FFFFFF;"></span>OY0812</div>
+          <div style="display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; border:1px solid var(--fs-border); font-size:13px; font-weight:500; opacity:0.6;"><span style="width:7px;height:7px;border-radius:50%;background:var(--fs-resolved);"></span>OY1300<i class="ti ti-lock" style="font-size:11px;"></i></div>
+        </div>
+      </div>
+      <div style="display:flex;">
+        <div style="width:320px; flex-shrink:0; border-right:1px solid var(--fs-border-strong); background:var(--fs-surface);">
+          <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 18px 0;"><span style="font-size:17px; font-weight:500;">OY0812</span><span style="background:var(--fs-triggered-tint); color:var(--fs-triggered); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Triggered</span></div>
+          <div style="padding:14px 18px 0;">
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px;">
+              <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Base station ID</div><div style="font-size:13px; font-weight:500;">OY0812</div></div>
+              <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Classification</div><div style="font-size:13px; font-weight:500;">Rural</div></div>
+              <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Client</div><div style="font-size:13px; font-weight:500;">Airtel</div></div>
+              <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Manager</div><div style="font-size:13px; font-weight:500;">B. Okafor</div></div>
+            </div>
+          </div>
+          <div style="padding:10px 18px 0; font-size:11px; color:var(--fs-muted);">Started 09:15</div>
+          <div style="padding:16px 18px 6px; font-size:11px; font-weight:500; color:var(--fs-muted); text-transform:uppercase; letter-spacing:0.03em;">Assets</div>
+          <div>
+            <div style="display:flex; align-items:center; gap:10px; padding:10px 18px; background:var(--fs-primary-tint);"><div style="width:22px; height:22px; border-radius:50%; background:var(--fs-primary); display:flex; align-items:center; justify-content:center;"><i class="ti ti-check" style="font-size:12px; color:#FFFFFF;"></i></div><span style="flex:1; font-size:13px; font-weight:500;">Generator 1</span></div>
+            <div style="display:flex; align-items:center; gap:10px; padding:10px 18px; background:var(--fs-work-bg); border-left:3px solid var(--fs-primary);"><div style="width:22px; height:22px; border-radius:50%; border:1.5px solid var(--fs-border-strong);"></div><span style="flex:1; font-size:13px; font-weight:500;">Battery bank</span><i class="ti ti-chevron-right" style="font-size:14px; color:var(--fs-primary);"></i></div>
+          </div>
+          <div style="padding:16px 18px;"><div style="text-align:center; padding:12px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">Resolve alarm</div></div>
+        </div>
+        <div style="flex:1; background:var(--fs-work-bg);">
+          <div style="padding:18px 28px; border-bottom:0.5px solid var(--fs-border-strong); background:var(--fs-surface); display:flex; align-items:center; justify-content:space-between;"><span style="font-size:18px; font-weight:500;">Battery bank</span><span style="font-size:12px; color:var(--fs-muted);">Asset 2 of 2</span></div>
+          <div style="padding:22px 28px; max-width:520px;">
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Checklist</div>
+            <div style="background:var(--fs-surface); border-radius:14px; padding:14px 16px; margin-bottom:22px;">
+              <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Check terminal connections</div>
+              <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Measure cell voltage</div>
+              <div style="padding:8px 0; font-size:14px;">Inspect for corrosion</div>
+            </div>
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Any issues found? <span style="color:var(--fs-accent);">*</span></div>
+            <div style="display:flex; gap:10px; margin-bottom:16px; max-width:280px;">
+              <div style="flex:1; text-align:center; padding:11px; border-radius:12px; background:var(--fs-surface); border:1px solid var(--fs-border-strong); font-size:14px; font-weight:500;">No</div>
+              <div style="flex:1; text-align:center; padding:11px; border-radius:12px; background:var(--fs-primary); font-size:14px; font-weight:500; color:#FFFFFF;">Yes</div>
+            </div>
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Select all that apply <span style="color:var(--fs-accent);">*</span></div>
+            <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-bottom:22px;">
+              <div style="display:flex; align-items:center; gap:8px; background:var(--fs-surface); border:1px solid var(--fs-border-strong); border-radius:10px; padding:9px 10px;"><div style="width:16px; height:16px; border-radius:4px; border:1.5px solid var(--fs-border-strong);"></div><span style="font-size:12px;">No issues found</span></div>
+              <div style="display:flex; align-items:center; gap:8px; background:var(--fs-primary-tint); border:1px solid var(--fs-primary); border-radius:10px; padding:9px 10px;"><div style="width:16px; height:16px; border-radius:4px; background:var(--fs-primary); display:flex; align-items:center; justify-content:center;"><i class="ti ti-check" style="font-size:11px; color:#FFFFFF;"></i></div><span style="font-size:12px;">Corroded</span></div>
+            </div>
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Comments</div>
+            <div style="background:var(--fs-surface); border:1px solid var(--fs-border-strong); border-radius:12px; padding:10px 12px; margin-bottom:22px; font-size:13px; line-height:1.5;">Terminal 3 shows heavy corrosion, cleaned and retested.</div>
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Outstanding issues</div>
+            <div style="text-align:center; padding:12px; border:1px dashed var(--fs-border-strong); border-radius:12px; font-size:13px; color:var(--fs-muted); margin-bottom:24px; background:var(--fs-surface);"><i class="ti ti-plus" style="font-size:13px; margin-right:5px;"></i>Add issue</div>
+            <div style="max-width:280px;"><div style="text-align:center; padding:13px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">Complete</div></div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Tasks tab split view</h3>
+    <div class="frame-tablet"><div class="frame-tablet-inner">
+      <div style="background:var(--fs-surface); border-bottom:0.5px solid var(--fs-border);">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 24px 0;">
+          <span style="font-size:17px; font-weight:500;">Cluster A</span>
+          <div style="display:flex; align-items:center; gap:14px;">
+            <div style="display:flex; align-items:center; gap:6px; background:var(--fs-primary-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-primary);display:flex;align-items:center;justify-content:center;"><i class="ti ti-tools" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">2 / 4 done</span></div>
+            <div style="display:flex; align-items:center; gap:6px; background:var(--fs-triggered-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-triggered);display:flex;align-items:center;justify-content:center;"><i class="ti ti-alert-triangle" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">1 / 2 resolved</span></div>
+            <div style="display:flex; align-items:center; gap:6px; background:var(--fs-accent-tint); border-radius:999px; padding:6px 12px 6px 6px;"><div style="width:22px;height:22px;border-radius:8px;background:var(--fs-accent);display:flex;align-items:center;justify-content:center;"><i class="ti ti-clipboard-list" style="font-size:12px; color:#FFFFFF;"></i></div><span style="font-size:12px; font-weight:500;">4 open tasks</span></div>
+            <div style="width:32px; height:32px; border-radius:50%; background:var(--fs-bg); display:flex; align-items:center; justify-content:center;"><i class="ti ti-user" style="font-size:15px; color:var(--fs-muted);"></i></div>
+          </div>
+        </div>
+        <div style="display:flex; gap:20px; padding:14px 24px 16px;">
+          <div style="padding-bottom:10px; border-bottom:2px solid transparent; font-size:13px; font-weight:500; color:var(--fs-muted);">Routine</div>
+          <div style="padding-bottom:10px; border-bottom:2px solid transparent; font-size:13px; font-weight:500; color:var(--fs-muted);">Alarms</div>
+          <div style="padding-bottom:10px; border-bottom:2px solid var(--fs-primary); font-size:13px; font-weight:500;">Tasks</div>
+        </div>
+      </div>
+      <div style="display:flex;">
+        <div style="width:340px; flex-shrink:0; border-right:1px solid var(--fs-border-strong); background:var(--fs-surface);">
+          <div style="padding:14px 18px 6px; font-size:12px; color:var(--fs-muted);">4 open work orders</div>
+          <div style="padding:8px 12px;">
+            <div style="background:var(--fs-primary-tint); border:1px solid var(--fs-primary); border-radius:12px; padding:12px; margin-bottom:8px;">
+              <div style="font-size:11px; color:var(--fs-muted); margin-bottom:5px;">WO-0231 · OY0735 · AC unit</div>
+              <div style="font-size:13px; margin-bottom:9px; line-height:1.4;">Condenser fan bearing worn, flagged on last visit</div>
+              <div style="display:flex; gap:6px;"><span style="background:var(--fs-critical-tint); color:var(--fs-critical); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Critical</span><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Open</span></div>
+            </div>
+            <div style="border-radius:12px; padding:12px; margin-bottom:8px;">
+              <div style="font-size:11px; color:var(--fs-muted); margin-bottom:5px;">WO-0198 · OY0999 · Generator 2</div>
+              <div style="font-size:13px; margin-bottom:9px; line-height:1.4;">Fuel line fitting slightly loose, minor seepage noted</div>
+              <div style="display:flex; gap:6px;"><span style="background:var(--fs-medium-tint); color:var(--fs-medium); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Medium</span><span style="background:var(--fs-inprogress-tint); color:var(--fs-inprogress); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">In progress</span></div>
+            </div>
+            <div style="border-radius:12px; padding:12px; margin-bottom:8px;">
+              <div style="font-size:11px; color:var(--fs-muted); margin-bottom:5px;">WO-0225 · OY0735 · Rectifier</div>
+              <div style="font-size:13px; margin-bottom:9px; line-height:1.4;">Display panel flickers intermittently</div>
+              <div style="display:flex; gap:6px;"><span style="background:var(--fs-medium-tint); color:var(--fs-medium); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Low</span><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Open</span></div>
+            </div>
+            <div style="border-radius:12px; padding:12px;">
+              <div style="font-size:11px; color:var(--fs-muted); margin-bottom:5px;">WO-0212 · OY0812 · Battery bank</div>
+              <div style="font-size:13px; margin-bottom:9px; line-height:1.4;">Terminal corrosion on cell 3, needs cleaning</div>
+              <div style="display:flex; gap:6px;"><span style="background:var(--fs-medium-tint); color:var(--fs-medium); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Medium</span><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:10px; font-weight:500; padding:3px 8px; border-radius:999px;">Open</span></div>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1; background:var(--fs-work-bg);">
+          <div style="padding:16px 28px; border-bottom:0.5px solid var(--fs-border-strong); background:var(--fs-surface);">
+            <div style="font-size:11px; color:var(--fs-muted); margin-bottom:4px;">OY0735 · Routine maintenance</div>
+            <div style="display:flex; align-items:center; justify-content:space-between;"><span style="font-size:18px; font-weight:500;">AC unit</span><span style="font-size:12px; color:var(--fs-muted);">Asset 3 of 4</span></div>
+          </div>
+          <div style="padding:22px 28px; max-width:520px;">
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Checklist</div>
+            <div style="background:var(--fs-surface); border-radius:14px; padding:14px 16px; margin-bottom:22px;">
+              <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Check refrigerant level</div>
+              <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Inspect compressor</div>
+              <div style="padding:8px 0; border-bottom:0.5px solid var(--fs-border); font-size:14px;">Clean air filter</div>
+              <div style="padding:8px 0; font-size:14px;">Test thermostat calibration</div>
+            </div>
+            <div style="font-size:12px; color:var(--fs-muted); margin-bottom:8px;">Outstanding issues</div>
+            <div style="margin-bottom:10px; background:var(--fs-surface); border-radius:12px; padding:11px 14px;">
+              <div style="font-size:13px; margin-bottom:5px;">Compressor bracket loose, needs tightening</div>
+              <span style="background:var(--fs-accent-tint); color:var(--fs-accent); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Medium</span>
+            </div>
+            <div style="font-size:12px; color:var(--fs-muted); margin:22px 0 8px;">Work orders</div>
+            <div style="background:var(--fs-surface); border:2px solid var(--fs-primary); border-radius:14px; padding:14px;">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;"><div style="display:flex; align-items:center; gap:8px;"><i class="ti ti-clipboard-list" style="font-size:16px; color:var(--fs-primary);"></i><span style="font-size:13px; font-weight:500;">WO-0231</span></div><span style="background:var(--fs-open-tint); color:var(--fs-open); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Open</span></div>
+              <div style="font-size:13px; margin-bottom:12px; line-height:1.5;">Condenser fan bearing worn, flagged on last visit</div>
+              <div style="display:flex; align-items:center; justify-content:space-between;"><span style="background:var(--fs-critical-tint); color:var(--fs-critical); font-size:11px; font-weight:500; padding:3px 9px; border-radius:999px;">Critical priority</span><div style="padding:8px 16px; background:var(--fs-primary); border-radius:10px; font-size:12px; font-weight:500; color:#FFFFFF;">Mark complete</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+<h2 class="section-title">Tablet — Supporting states</h2>
+<div class="row">
+
+  <div>
+    <h3 class="screen-title">Geofence error</h3>
+    <div class="frame-tablet"><div class="frame-tablet-inner" style="min-height:500px; display:flex;">
+      <div style="width:320px; flex-shrink:0; border-right:1px solid var(--fs-border-strong); background:var(--fs-surface);">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:18px 18px 0;"><span style="font-size:17px; font-weight:500;">OY0812</span><span style="background:var(--fs-notstarted-tint); color:var(--fs-notstarted); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Not started</span></div>
+        <div style="padding:14px 18px 0;">
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px;">
+            <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Base station ID</div><div style="font-size:13px; font-weight:500;">OY0812</div></div>
+            <div style="background:var(--fs-bg); border-radius:12px; padding:10px 12px;"><div style="font-size:10px; color:var(--fs-muted); margin-bottom:3px;">Classification</div><div style="font-size:13px; font-weight:500;">Rural</div></div>
+          </div>
+        </div>
+        <div style="margin:18px 18px 12px; background:var(--fs-danger-tint); border-radius:12px; padding:12px 14px; display:flex; gap:9px; align-items:flex-start;"><i class="ti ti-map-pin-off" style="font-size:16px; color:var(--fs-danger); margin-top:1px;"></i><span style="font-size:12px; color:var(--fs-danger); line-height:1.5;">You must be at base station OY0812 to start this maintenance schedule.</span></div>
+        <div style="padding:0 18px;"><div style="text-align:center; padding:12px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">Start maintenance</div></div>
+      </div>
+      <div style="flex:1; background:var(--fs-work-bg); display:flex; align-items:center; justify-content:center; color:var(--fs-muted); font-size:13px;">Select an asset from the list to view its checklist</div>
+    </div></div>
+  </div>
+
+  <div>
+    <h3 class="screen-title">Exit-warning modal</h3>
+    <div class="frame-tablet"><div class="frame-tablet-inner" style="min-height:500px; position:relative;">
+      <div style="display:flex; opacity:0.35;">
+        <div style="width:320px; flex-shrink:0; border-right:1px solid var(--fs-border-strong); background:var(--fs-surface); padding:18px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;"><span style="font-size:17px; font-weight:500;">OY0735</span><span style="background:var(--fs-ongoing-tint); color:var(--fs-ongoing); font-size:12px; font-weight:500; padding:5px 12px; border-radius:999px;">Ongoing</span></div>
+          <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px;"><div style="background:var(--fs-bg); border-radius:12px; height:44px;"></div><div style="background:var(--fs-bg); border-radius:12px; height:44px;"></div></div>
+        </div>
+        <div style="flex:1; background:var(--fs-work-bg);"></div>
+      </div>
+      <div style="position:absolute; inset:0; background:rgba(28,25,23,0.5); display:flex; align-items:center; justify-content:center; padding:28px;">
+        <div style="background:var(--fs-surface); border-radius:18px; padding:24px; max-width:380px; width:100%;">
+          <div style="width:42px; height:42px; border-radius:12px; background:#FDF3D8; display:flex; align-items:center; justify-content:center; margin-bottom:16px;"><i class="ti ti-alert-triangle" style="font-size:20px; color:#92610A;"></i></div>
+          <div style="font-size:16px; font-weight:500; margin-bottom:6px;">Some maintenance tasks have not been completed</div>
+          <div style="font-size:13px; color:var(--fs-muted); margin-bottom:22px; line-height:1.5;">You're switching away from OY0735. End maintenance anyway? Assets you've already completed will be saved.</div>
+          <div style="display:flex; gap:10px;">
+            <div style="flex:1; text-align:center; padding:12px; border-radius:12px; background:var(--fs-surface); border:1px solid var(--fs-border-strong); font-size:14px; font-weight:500;">Continue maintenance</div>
+            <div style="flex:1; text-align:center; padding:12px; border-radius:12px; background:var(--fs-accent); font-size:14px; font-weight:500; color:#FFFFFF;">End maintenance</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+  </div>
+
+</div>
+
+</body>
+</html>

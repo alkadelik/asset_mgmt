@@ -1,0 +1,14 @@
+# mobile/ has its own git repo
+mobile/
+
+.DS_Store
+
+# Python / Django
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/media/
+backend/staticfiles/
+
+# Env
+.env
+.env.local
