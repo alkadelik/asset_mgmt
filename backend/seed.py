@@ -11,7 +11,7 @@ from assets.models import (
     Region, ClusterGroup, Cluster, Client, BaseStation, Location,
     AssetCategory, Asset, Condition, Role, Personnel,
     PMCategory, AssetCheckList, PMQuestion,
-    WorkOrder, Alarm, AlarmNote, InspectionResponse, WorkOrderChecklistResponse, Issue,
+    WorkOrder, Alarm, AlarmNote, InspectionResponse, WorkOrderChecklistResponse,
     DieselDelivery, MeterReading, Part, PartRequest, SafetyReport, Vendor,
 )
 
@@ -26,6 +26,14 @@ print("Seeding org hierarchy...")
 region, _ = Region.objects.get_or_create(name="South West")
 cg, _ = ClusterGroup.objects.get_or_create(region=region, name="Lagos Cluster Group")
 cluster, _ = Cluster.objects.get_or_create(cluster_group=cg, name="Lagos Island")
+
+region_nc, _ = Region.objects.get_or_create(name="North Central")
+cg_abuja, _ = ClusterGroup.objects.get_or_create(region=region_nc, name="Abuja Cluster Group")
+cluster_abuja, _ = Cluster.objects.get_or_create(cluster_group=cg_abuja, name="Abuja Central")
+
+region_ss, _ = Region.objects.get_or_create(name="South South")
+cg_ph, _ = ClusterGroup.objects.get_or_create(region=region_ss, name="Port Harcourt Cluster Group")
+cluster_ph, _ = Cluster.objects.get_or_create(cluster_group=cg_ph, name="Port Harcourt Central")
 
 print("Seeding clients...")
 mtn, _ = Client.objects.get_or_create(name=Client.NAME_MTN)
@@ -67,12 +75,60 @@ station_b, _ = BaseStation.objects.get_or_create(
 )
 station_b.clients.set([mtn])
 
+station_c, _ = BaseStation.objects.get_or_create(
+    site_id="LOS-C023",
+    defaults={
+        "cluster": cluster,
+        "name": "Ikeja City Mall Gamma",
+        "address": "Obafemi Awolowo Way, Ikeja, Lagos",
+        "state": "Lagos",
+        "site_classification": BaseStation.CLASS_PLATINUM,
+        "manager": manager,
+    },
+)
+station_c.clients.set([mtn, airtel])
+
+station_d, _ = BaseStation.objects.get_or_create(
+    site_id="ABJ-D045",
+    defaults={
+        "cluster": cluster_abuja,
+        "name": "Wuse II Delta",
+        "address": "Aminu Kano Crescent, Wuse II, Abuja",
+        "state": "FCT",
+        "site_classification": BaseStation.CLASS_PLATINUM,
+        "manager": manager,
+    },
+)
+station_d.clients.set([airtel])
+
+station_e, _ = BaseStation.objects.get_or_create(
+    site_id="PHC-E067",
+    defaults={
+        "cluster": cluster_ph,
+        "name": "GRA Phase 2 Epsilon",
+        "address": "Aba Road, GRA Phase 2, Port Harcourt",
+        "state": "Rivers",
+        "site_classification": BaseStation.CLASS_PLATINUM,
+        "manager": manager,
+    },
+)
+station_e.clients.set([mtn])
+
 print("Seeding locations...")
 loc_a, _ = Location.objects.get_or_create(
     base_station=station_a, name="Equipment Room A", defaults={"parent_location": None}
 )
 loc_b, _ = Location.objects.get_or_create(
     base_station=station_b, name="Equipment Room B", defaults={"parent_location": None}
+)
+loc_c, _ = Location.objects.get_or_create(
+    base_station=station_c, name="Equipment Room C", defaults={"parent_location": None}
+)
+loc_d, _ = Location.objects.get_or_create(
+    base_station=station_d, name="Equipment Room D", defaults={"parent_location": None}
+)
+loc_e, _ = Location.objects.get_or_create(
+    base_station=station_e, name="Equipment Room E", defaults={"parent_location": None}
 )
 
 print("Seeding asset categories...")
@@ -251,6 +307,87 @@ janitorial_b, _ = Asset.objects.get_or_create(
     defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-B001"},
 )
 
+print("Seeding assets at Station C...")
+gen_c, _ = Asset.objects.get_or_create(
+    name="Generator Set C",
+    location=loc_c,
+    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-C001"},
+)
+ac_c, _ = Asset.objects.get_or_create(
+    name="Air Conditioning Unit C",
+    location=loc_c,
+    defaults={"asset_category": cat_ac, "status": Asset.STATUS_ACTIVE, "tag": "AC-C001"},
+)
+rect_c, _ = Asset.objects.get_or_create(
+    name="Rectifier Unit C",
+    location=loc_c,
+    defaults={"asset_category": cat_rect, "status": Asset.STATUS_ACTIVE, "tag": "RECT-C001"},
+)
+battery_c, _ = Asset.objects.get_or_create(
+    name="Battery Bank C",
+    location=loc_c,
+    defaults={"asset_category": cat_battery, "status": Asset.STATUS_ACTIVE, "tag": "BAT-C001"},
+)
+janitorial_c, _ = Asset.objects.get_or_create(
+    name="Site Janitorial — Ikeja City Mall Gamma",
+    location=loc_c,
+    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-C001"},
+)
+
+print("Seeding assets at Station D...")
+gen_d, _ = Asset.objects.get_or_create(
+    name="Generator Set D",
+    location=loc_d,
+    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-D001"},
+)
+dc_d, _ = Asset.objects.get_or_create(
+    name="DC Distribution Board D",
+    location=loc_d,
+    defaults={"asset_category": cat_dc, "status": Asset.STATUS_ACTIVE, "tag": "DC-D001"},
+)
+ac_elec_d, _ = Asset.objects.get_or_create(
+    name="AC Distribution Board D",
+    location=loc_d,
+    defaults={"asset_category": cat_ac_elec, "status": Asset.STATUS_ACTIVE, "tag": "ACE-D001"},
+)
+solar_d, _ = Asset.objects.get_or_create(
+    name="Solar Array D",
+    location=loc_d,
+    defaults={"asset_category": cat_solar, "status": Asset.STATUS_ACTIVE, "tag": "SOL-D001"},
+)
+janitorial_d, _ = Asset.objects.get_or_create(
+    name="Site Janitorial — Wuse II Delta",
+    location=loc_d,
+    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-D001"},
+)
+
+print("Seeding assets at Station E...")
+gen_e, _ = Asset.objects.get_or_create(
+    name="Generator Set E",
+    location=loc_e,
+    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-E001"},
+)
+ac_e, _ = Asset.objects.get_or_create(
+    name="Air Conditioning Unit E",
+    location=loc_e,
+    defaults={"asset_category": cat_ac, "status": Asset.STATUS_ACTIVE, "tag": "AC-E001"},
+)
+battery_e, _ = Asset.objects.get_or_create(
+    name="Battery Bank E",
+    location=loc_e,
+    defaults={"asset_category": cat_battery, "status": Asset.STATUS_ACTIVE, "tag": "BAT-E001"},
+)
+rect_e, _ = Asset.objects.get_or_create(
+    name="Rectifier Unit E",
+    location=loc_e,
+    defaults={"asset_category": cat_rect, "status": Asset.STATUS_ACTIVE, "tag": "RECT-E001"},
+)
+janitorial_e, _ = Asset.objects.get_or_create(
+    name="Site Janitorial — GRA Phase 2 Epsilon",
+    location=loc_e,
+    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-E001"},
+)
+
 print("Seeding technician user...")
 tech, created = Personnel.objects.get_or_create(username="tech1")
 if created:
@@ -259,7 +396,7 @@ if created:
     tech.last_name = "Obi"
 tech.role = role_tech
 tech.save()
-tech.stations.set([station_a, station_b])
+tech.stations.set([station_a, station_b, station_c, station_d, station_e])
 print(f"  tech1 stations: {list(tech.stations.values_list('site_id', flat=True))}")
 
 print("Seeding today's work orders...")
@@ -290,30 +427,59 @@ wo_b, wo_b_created = WorkOrder.objects.get_or_create(
 if wo_b_created:
     print(f"  Created WO for {station_b.site_id}")
 
-print("Seeding inspection response for Generator Set A (partially complete)...")
-ir_gen, ir_created = InspectionResponse.objects.get_or_create(
-    work_order=wo_a,
-    asset=gen_a,
-    defaults={"issues_found": True, "done": True, "comments": "Oil level was low — topped up."},
+wo_c, wo_c_created = WorkOrder.objects.get_or_create(
+    base_station=station_c,
+    type=WorkOrder.TYPE_PREVENTIVE,
+    due_date=today,
+    defaults={
+        "status": WorkOrder.STATUS_OPEN,
+        "priority": WorkOrder.PRIORITY_MEDIUM,
+        "assigned_technician": tech,
+    },
 )
-if ir_created:
-    # Seed checklist responses
-    questions = PMQuestion.objects.filter(task_template=gen_checklist)
-    for i, q in enumerate(questions):
-        WorkOrderChecklistResponse.objects.get_or_create(
-            inspection_response=ir_gen, question=q,
-            defaults={"checked": i < 4},  # first 4 checked
-        )
-    # Add condition and issue
-    oil_leak = Condition.objects.filter(name="Oil leak detected", asset_category=cat_gen).first()
-    if oil_leak:
-        ir_gen.conditions.add(oil_leak)
-    Issue.objects.get_or_create(
-        inspection_response=ir_gen,
-        description="Oil level critically low — refill required",
-        defaults={"severity": Issue.SEVERITY_HIGH},
-    )
-    print(f"  Created IR for {gen_a.name}")
+if wo_c_created:
+    print(f"  Created WO for {station_c.site_id}")
+
+wo_d, wo_d_created = WorkOrder.objects.get_or_create(
+    base_station=station_d,
+    type=WorkOrder.TYPE_PREVENTIVE,
+    due_date=today,
+    defaults={
+        "status": WorkOrder.STATUS_OPEN,
+        "priority": WorkOrder.PRIORITY_HIGH,
+        "assigned_technician": tech,
+    },
+)
+if wo_d_created:
+    print(f"  Created WO for {station_d.site_id}")
+
+wo_e, wo_e_created = WorkOrder.objects.get_or_create(
+    base_station=station_e,
+    type=WorkOrder.TYPE_PREVENTIVE,
+    due_date=today,
+    defaults={
+        "status": WorkOrder.STATUS_OPEN,
+        "priority": WorkOrder.PRIORITY_MEDIUM,
+        "assigned_technician": tech,
+    },
+)
+if wo_e_created:
+    print(f"  Created WO for {station_e.site_id}")
+
+# wo_a is seeded directly as in_progress (bypassing POST /start/), so mirror what
+# /start/ now does: create an empty InspectionResponse + checklist for every
+# active asset at the station, so all of them are openable from Screen 2 and
+# start from a clean (unchecked, not done) state for real end-to-end testing.
+for other_asset in [gen_a, ac_a, rect_a, solar_a, janitorial_a]:
+    ir_other, ir_other_created = InspectionResponse.objects.get_or_create(work_order=wo_a, asset=other_asset)
+    if ir_other_created:
+        other_checklists = AssetCheckList.objects.filter(asset_category=other_asset.asset_category)
+        other_questions = PMQuestion.objects.filter(task_template__in=other_checklists)
+        WorkOrderChecklistResponse.objects.bulk_create([
+            WorkOrderChecklistResponse(inspection_response=ir_other, question=q)
+            for q in other_questions
+        ])
+        print(f"  Created IR for {other_asset.name}")
 
 print("Seeding alarms...")
 alarm_open, _ = Alarm.objects.get_or_create(

@@ -3,7 +3,7 @@ from .models import (
     Personnel, BaseStation, WorkOrder, InspectionResponse,
     WorkOrderChecklistResponse, Issue, Condition, Alarm, AlarmNote, Asset,
     Attachment, DieselDelivery, MeterReading, Part, PartRequest, PartUsage,
-    SafetyReport, Vendor,
+    SafetyReport, Vendor, AssetCategory, AssetCheckList, PMQuestion,
 )
 
 
@@ -153,7 +153,7 @@ class ChecklistResponseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WorkOrderChecklistResponse
-        fields = ['id', 'question', 'checked']
+        fields = ['id', 'question', 'checked', 'updated']
 
     def get_question(self, obj):
         return {'id': str(obj.question.id), 'question': obj.question.question}
@@ -315,3 +315,30 @@ class SafetyReportSerializer(serializers.ModelSerializer):
         if obj.reported_by:
             return {'id': str(obj.reported_by.id), 'name': obj.reported_by.name}
         return None
+
+
+# ── Asset Categories & Checkpoints (admin reference/editor) ───────────────────
+
+class PMQuestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PMQuestion
+        fields = ['id', 'question']
+
+
+class AssetCategorySerializer(serializers.ModelSerializer):
+    checklist_id = serializers.SerializerMethodField()
+    questions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AssetCategory
+        fields = ['id', 'name', 'checklist_id', 'questions']
+
+    def get_checklist_id(self, obj):
+        checklist = getattr(obj, '_checklist', None)
+        return str(checklist.id) if checklist else None
+
+    def get_questions(self, obj):
+        checklist = getattr(obj, '_checklist', None)
+        if not checklist:
+            return []
+        return PMQuestionSerializer(checklist.questions.all(), many=True).data

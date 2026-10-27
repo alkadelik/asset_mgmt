@@ -734,6 +734,10 @@ class WorkOrderChecklistResponse(models.Model):
 
     class Meta:
         unique_together = [('inspection_response', 'question')]
+        # Without an explicit ordering, an UPDATE (toggling `checked`) can move a row's
+        # physical tuple, making a plain scan return items in a different order on
+        # the next fetch — items appeared to "jump" in the checklist after a tap.
+        ordering = ['created']
 
     def __str__(self):
         return f"{'✓' if self.checked else '✗'} {self.question}"

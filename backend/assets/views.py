@@ -1,5 +1,8 @@
+import uuid
+
 from django.core.files.storage import default_storage
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.parsers import MultiPartParser
@@ -11,7 +14,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from .models import (
     WorkOrder, Alarm, AlarmNote, InspectionResponse,
     WorkOrderChecklistResponse, Issue, Condition, Asset,
-    PMQuestion, AssetCheckList, Attachment, BaseStation, DieselDelivery,
+    PMQuestion, AssetCheckList, AssetCategory, Attachment, BaseStation, DieselDelivery,
     MeterReading, Part, PartRequest, PartUsage, SafetyReport, Vendor,
 )
 from .serializers import (
@@ -23,6 +26,7 @@ from .serializers import (
     AttachmentSerializer, DieselDeliverySerializer, MeterReadingSerializer,
     PartRequestSerializer, PartSerializer, PartUsageSerializer,
     SafetyReportSerializer, VendorSerializer,
+    AssetCategorySerializer, PMQuestionSerializer,
 )
 
 
@@ -163,6 +167,19 @@ def work_order_detail(request, pk):
     return Response(WorkOrderDetailSerializer(wo).data)
 
 
+def _get_or_create_inspection_response(wo, asset):
+    """Create an InspectionResponse (and its checklist rows) for one asset within a work order, if missing."""
+    ir, created = InspectionResponse.objects.get_or_create(work_order=wo, asset=asset)
+    if created:
+        checklists = AssetCheckList.objects.filter(asset_category=asset.asset_category)
+        questions = PMQuestion.objects.filter(task_template__in=checklists)
+        WorkOrderChecklistResponse.objects.bulk_create([
+            WorkOrderChecklistResponse(inspection_response=ir, question=q)
+            for q in questions
+        ])
+    return ir, created
+
+
 @api_view(['POST'])
 def work_order_start(request, pk):
     try:
@@ -178,6 +195,14 @@ def work_order_start(request, pk):
     wo.geofence_verified = geofence_verified
     wo.status = WorkOrder.STATUS_IN_PROGRESS
     wo.save(update_fields=['started_at', 'geofence_verified', 'status', 'updated'])
+
+    if wo.base_station_id:
+        assets = Asset.objects.filter(
+            location__base_station=wo.base_station, status=Asset.STATUS_ACTIVE
+        ).select_related('asset_category')
+        for asset in assets:
+            _get_or_create_inspection_response(wo, asset)
+
     return Response({'started_at': wo.started_at, 'geofence_verified': wo.geofence_verified})
 
 
@@ -191,20 +216,40 @@ def work_order_end(request, pk):
     if not wo.started_at:
         return Response({'detail': 'Work order not started.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    done_ids = list(
-        wo.inspection_responses.filter(done=False).values_list('id', flat=True)
-    )
-    wo.inspection_responses.filter(done=False).update(done=True)
+    # Completion is triggered explicitly per asset (the "Maintenance complete" button
+    # on Asset Maintenance), not inferred here — ending the session no longer force-marks
+    # anything done.
     wo.ended_at = timezone.now()
     wo.status = WorkOrder.STATUS_COMPLETE
     wo.save(update_fields=['ended_at', 'status', 'updated'])
-    return Response({
-        'ended_at': wo.ended_at,
-        'assets_marked_done': [str(i) for i in done_ids],
-    })
+    return Response({'ended_at': wo.ended_at})
 
 
 # ── Alarms ────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+def alarms(request):
+    """Dev/admin tool: manually raise a test alarm on an asset at one of the
+    technician's assigned stations, for testing the alarm flow end to end."""
+    asset_id = request.data.get('asset')
+    if not asset_id:
+        return Response({'detail': 'asset is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        asset = Asset.objects.select_related('location__base_station').get(
+            pk=asset_id, location__base_station__in=request.user.stations.all()
+        )
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    alarm, _ = Alarm.objects.get_or_create(
+        id=request.data.get('id') or uuid.uuid4(),
+        defaults={'asset': asset, 'raised_at': timezone.now()},
+    )
+    alarm = Alarm.objects.select_related(
+        'asset__location__base_station__manager', 'resolved_by',
+    ).prefetch_related('asset__location__base_station__clients', 'notes').get(pk=alarm.pk)
+    return Response(AlarmDetailSerializer(alarm).data, status=status.HTTP_201_CREATED)
+
 
 @api_view(['GET'])
 def alarm_detail(request, pk):
@@ -251,7 +296,10 @@ def alarm_add_note(request, pk):
     if not text:
         return Response({'detail': 'text is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    note = AlarmNote.objects.create(alarm=alarm, text=text)
+    note, _ = AlarmNote.objects.get_or_create(
+        id=request.data.get('id') or uuid.uuid4(),
+        defaults={'alarm': alarm, 'text': text},
+    )
     return Response(AlarmNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
@@ -279,15 +327,7 @@ def inspection_responses(request):
     except (WorkOrder.DoesNotExist, Asset.DoesNotExist):
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    ir, created = InspectionResponse.objects.get_or_create(work_order=wo, asset=asset)
-
-    if created:
-        checklists = AssetCheckList.objects.filter(asset_category=asset.asset_category)
-        questions = PMQuestion.objects.filter(task_template__in=checklists)
-        WorkOrderChecklistResponse.objects.bulk_create([
-            WorkOrderChecklistResponse(inspection_response=ir, question=q)
-            for q in questions
-        ])
+    ir, created = _get_or_create_inspection_response(wo, asset)
 
     ir = InspectionResponse.objects.prefetch_related(
         'conditions', 'checklist_responses__question', 'issues'
@@ -310,12 +350,43 @@ def inspection_response_detail(request, pk):
     if request.method == 'GET':
         return Response(InspectionResponseDetailSerializer(ir).data)
 
+    base_updated_at = request.data.get('base_updated_at')
+    if base_updated_at:
+        base_dt = parse_datetime(base_updated_at)
+        if base_dt and ir.updated > base_dt:
+            return Response(InspectionResponseDetailSerializer(ir).data, status=status.HTTP_409_CONFLICT)
+
     if 'issues_found' in request.data:
         ir.issues_found = request.data['issues_found']
     if 'comments' in request.data:
         ir.comments = request.data['comments']
     if 'conditions' in request.data:
         ir.conditions.set(request.data['conditions'])
+    if 'done' in request.data:
+        done = request.data['done']
+        if done:
+            all_checked = not ir.checklist_responses.filter(checked=False).exists()
+            has_comment = bool(ir.comments.strip())
+            if not all_checked and not has_comment:
+                return Response(
+                    {'detail': 'Checklist is not fully checked, and no comment was given explaining why.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Generators must have today's run-hours and diesel-level readings — no exception.
+            if ir.asset.asset_category and ir.asset.asset_category.name == 'Generator':
+                today = timezone.localdate()
+                has_run_hours = ir.asset.meter_readings.filter(
+                    reading_type=MeterReading.TYPE_RUN_HOURS, date=today
+                ).exists()
+                has_diesel_level = ir.asset.meter_readings.filter(
+                    reading_type=MeterReading.TYPE_DIESEL_LEVEL, date=today
+                ).exists()
+                if not (has_run_hours and has_diesel_level):
+                    return Response(
+                        {'detail': "Today's run hours and diesel level readings are required for generators."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        ir.done = done
     ir.save()
 
     ir = InspectionResponse.objects.prefetch_related(
@@ -330,6 +401,12 @@ def checklist_response_detail(request, pk):
         cr = WorkOrderChecklistResponse.objects.select_related('question').get(pk=pk)
     except WorkOrderChecklistResponse.DoesNotExist:
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    base_updated_at = request.data.get('base_updated_at')
+    if base_updated_at:
+        base_dt = parse_datetime(base_updated_at)
+        if base_dt and cr.updated > base_dt:
+            return Response(ChecklistResponseSerializer(cr).data, status=status.HTTP_409_CONFLICT)
 
     if 'checked' in request.data:
         cr.checked = request.data['checked']
@@ -358,7 +435,10 @@ def issues(request):
     except InspectionResponse.DoesNotExist:
         return Response({'detail': 'Inspection response not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    issue = Issue.objects.create(inspection_response=ir, description=description, severity=severity)
+    issue, _ = Issue.objects.get_or_create(
+        id=request.data.get('id') or uuid.uuid4(),
+        defaults={'inspection_response': ir, 'description': description, 'severity': severity},
+    )
     return Response(IssueSerializer(issue).data, status=status.HTTP_201_CREATED)
 
 
@@ -407,12 +487,47 @@ def meter_readings(request):
     if reading_type not in dict(MeterReading.TYPE_CHOICES):
         return Response({'detail': 'Invalid reading_type.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    client_id = request.data.get('id')
+    if client_id:
+        existing = MeterReading.objects.filter(pk=client_id).first()
+        if existing:
+            # Already recorded (e.g. a queued offline write being replayed) — return it
+            # as-is rather than re-running monotonicity checks against a since-changed
+            # "most recent reading", which could reject a reading that already succeeded.
+            return Response(MeterReadingSerializer(existing).data, status=status.HTTP_200_OK)
+
     try:
         asset = Asset.objects.get(pk=asset_id)
     except Asset.DoesNotExist:
         return Response({'detail': 'Asset not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return Response({'detail': 'value must be a number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    previous = MeterReading.objects.filter(
+        asset=asset, reading_type=reading_type
+    ).order_by('-date', '-created').first()
+    if previous:
+        if reading_type == MeterReading.TYPE_RUN_HOURS and value < previous.value:
+            return Response(
+                {'detail': f'Run hours ({value}) cannot be less than the previous reading ({previous.value}).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if reading_type == MeterReading.TYPE_DIESEL_LEVEL and value > previous.value:
+            return Response(
+                {
+                    'detail': (
+                        f'Diesel level ({value}mm) cannot be higher than the previous reading '
+                        f'({previous.value}mm) — only a diesel delivery can raise it.'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
     reading = MeterReading.objects.create(
+        id=client_id or uuid.uuid4(),
         asset=asset,
         reading_type=reading_type,
         value=value,
@@ -422,6 +537,27 @@ def meter_readings(request):
         recorded_by=request.user,
     )
     return Response(MeterReadingSerializer(reading).data, status=status.HTTP_201_CREATED)
+
+
+# ── Base Stations & Assets (pickers) ──────────────────────────────────────────
+
+@api_view(['GET'])
+def base_stations(request):
+    qs = request.user.stations.select_related('manager').prefetch_related('clients')
+    return Response(BaseStationSummarySerializer(qs, many=True).data)
+
+
+@api_view(['GET'])
+def assets(request):
+    base_station_id = request.query_params.get('base_station')
+    if not base_station_id:
+        return Response({'detail': 'base_station is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    qs = Asset.objects.filter(
+        location__base_station_id=base_station_id,
+        location__base_station__in=request.user.stations.all(),
+        status=Asset.STATUS_ACTIVE,
+    ).order_by('name')
+    return Response(AssetSummarySerializer(qs, many=True).data)
 
 
 # ── Vendors & Parts ───────────────────────────────────────────────────────────
@@ -468,22 +604,52 @@ def diesel_deliveries(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    client_id = request.data.get('id')
+    if client_id:
+        existing = DieselDelivery.objects.filter(pk=client_id).first()
+        if existing:
+            # Already recorded — return as-is rather than re-running the diesel-level
+            # side effect below a second time.
+            return Response(DieselDeliverySerializer(existing).data, status=status.HTTP_200_OK)
+
     try:
         base_station = BaseStation.objects.get(pk=base_station_id)
     except BaseStation.DoesNotExist:
         return Response({'detail': 'Base station not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+    tank_level_after = request.data.get('tank_level_after') or None
+
     delivery = DieselDelivery.objects.create(
+        id=client_id or uuid.uuid4(),
         base_station=base_station,
         work_order_id=request.data.get('work_order') or None,
         vendor_id=request.data.get('vendor') or None,
         quantity_litres=quantity_litres,
         tank_level_before=request.data.get('tank_level_before') or None,
-        tank_level_after=request.data.get('tank_level_after') or None,
+        tank_level_after=tank_level_after,
         delivered_at=request.data.get('delivered_at') or timezone.now(),
         recorded_by=request.user,
         notes=request.data.get('notes', ''),
     )
+
+    # A delivery is the one thing allowed to raise a generator's diesel level — record it
+    # as a fresh reading so the Readings section and future validation see the new level.
+    if tank_level_after is not None:
+        generator = Asset.objects.filter(
+            location__base_station=base_station, asset_category__name='Generator',
+            status=Asset.STATUS_ACTIVE,
+        ).first()
+        if generator:
+            MeterReading.objects.create(
+                asset=generator,
+                reading_type=MeterReading.TYPE_DIESEL_LEVEL,
+                value=tank_level_after,
+                unit=MeterReading.UNIT_MM,
+                date=timezone.localdate(),
+                work_order_id=request.data.get('work_order') or None,
+                recorded_by=request.user,
+            )
+
     return Response(DieselDeliverySerializer(delivery).data, status=status.HTTP_201_CREATED)
 
 
@@ -511,14 +677,17 @@ def part_requests(request):
     except (Part.DoesNotExist, BaseStation.DoesNotExist):
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    part_request = PartRequest.objects.create(
-        part=part,
-        base_station=base_station,
-        work_order_id=request.data.get('work_order') or None,
-        asset_id=request.data.get('asset') or None,
-        quantity=quantity,
-        reason=request.data.get('reason', ''),
-        requested_by=request.user,
+    part_request, _ = PartRequest.objects.get_or_create(
+        id=request.data.get('id') or uuid.uuid4(),
+        defaults={
+            'part': part,
+            'base_station': base_station,
+            'work_order_id': request.data.get('work_order') or None,
+            'asset_id': request.data.get('asset') or None,
+            'quantity': quantity,
+            'reason': request.data.get('reason', ''),
+            'requested_by': request.user,
+        },
     )
     return Response(PartRequestSerializer(part_request).data, status=status.HTTP_201_CREATED)
 
@@ -550,6 +719,9 @@ def part_usages(request):
         work_order_id = request.query_params.get('work_order')
         if work_order_id:
             qs = qs.filter(work_order_id=work_order_id)
+        asset_id = request.query_params.get('asset')
+        if asset_id:
+            qs = qs.filter(asset_id=asset_id)
         return Response(PartUsageSerializer(qs, many=True).data)
 
     work_order_id = request.data.get('work_order')
@@ -570,13 +742,16 @@ def part_usages(request):
     except (WorkOrder.DoesNotExist, Asset.DoesNotExist, Part.DoesNotExist):
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    usage = PartUsage.objects.create(
-        work_order=wo,
-        asset=asset,
-        part=part,
-        qty_used=qty_used,
-        notes=request.data.get('notes', ''),
-        recorded_by=request.user,
+    usage, _ = PartUsage.objects.get_or_create(
+        id=request.data.get('id') or uuid.uuid4(),
+        defaults={
+            'work_order': wo,
+            'asset': asset,
+            'part': part,
+            'qty_used': qty_used,
+            'notes': request.data.get('notes', ''),
+            'recorded_by': request.user,
+        },
     )
     return Response(PartUsageSerializer(usage).data, status=status.HTTP_201_CREATED)
 
@@ -613,13 +788,16 @@ def safety_reports(request):
     except BaseStation.DoesNotExist:
         return Response({'detail': 'Base station not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    report = SafetyReport.objects.create(
-        base_station=base_station,
-        work_order_id=request.data.get('work_order') or None,
-        type=report_type,
-        severity=severity,
-        description=description,
-        reported_by=request.user,
+    report, _ = SafetyReport.objects.get_or_create(
+        id=request.data.get('id') or uuid.uuid4(),
+        defaults={
+            'base_station': base_station,
+            'work_order_id': request.data.get('work_order') or None,
+            'type': report_type,
+            'severity': severity,
+            'description': description,
+            'reported_by': request.user,
+        },
     )
     return Response(SafetyReportSerializer(report).data, status=status.HTTP_201_CREATED)
 
@@ -649,3 +827,90 @@ def attachments(request):
 
     attachment = Attachment.objects.create(file_url=file_url, type=attachment_type, **owners)
     return Response(AttachmentSerializer(attachment).data, status=status.HTTP_201_CREATED)
+
+
+# ── Asset Categories & Checkpoints (admin reference/editor) ───────────────────
+# Temporary admin-facing page: manages the shared checklist template per asset
+# category. Any asset of that category, at any station, picks up these
+# checkpoints automatically — this does not create physical Asset records.
+
+def _category_checklist(category):
+    """The category-level checklist template (asset_category set, pm_category/asset null)."""
+    return AssetCheckList.objects.filter(
+        asset_category=category, pm_category__isnull=True, asset__isnull=True
+    ).prefetch_related('questions').first()
+
+
+@api_view(['GET', 'POST'])
+def asset_categories(request):
+    if request.method == 'GET':
+        categories = list(AssetCategory.objects.all())
+        for category in categories:
+            category._checklist = _category_checklist(category)
+        return Response(AssetCategorySerializer(categories, many=True).data)
+
+    name = request.data.get('name', '').strip()
+    if not name:
+        return Response({'detail': 'name is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    category = AssetCategory.objects.create(name=name)
+    category._checklist = None
+    return Response(AssetCategorySerializer(category).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['PATCH'])
+def asset_category_detail(request, pk):
+    try:
+        category = AssetCategory.objects.get(pk=pk)
+    except AssetCategory.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if 'name' in request.data:
+        name = request.data['name'].strip()
+        if not name:
+            return Response({'detail': 'name cannot be blank.'}, status=status.HTTP_400_BAD_REQUEST)
+        category.name = name
+        category.save(update_fields=['name', 'updated'])
+
+    category._checklist = _category_checklist(category)
+    return Response(AssetCategorySerializer(category).data)
+
+
+@api_view(['POST'])
+def checklist_questions(request):
+    category_id = request.data.get('asset_category')
+    question_text = request.data.get('question', '').strip()
+    if not category_id or not question_text:
+        return Response(
+            {'detail': 'asset_category and question are required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        category = AssetCategory.objects.get(pk=category_id)
+    except AssetCategory.DoesNotExist:
+        return Response({'detail': 'Asset category not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    checklist, _ = AssetCheckList.objects.get_or_create(
+        asset_category=category, pm_category=None, asset=None,
+        defaults={'instructions': f'{category.name} routine inspection'},
+    )
+    question = PMQuestion.objects.create(task_template=checklist, question=question_text)
+    return Response(PMQuestionSerializer(question).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['PATCH', 'DELETE'])
+def checklist_question_detail(request, pk):
+    try:
+        question = PMQuestion.objects.get(pk=pk)
+    except PMQuestion.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == 'DELETE':
+        question.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    question_text = request.data.get('question', '').strip()
+    if not question_text:
+        return Response({'detail': 'question cannot be blank.'}, status=status.HTTP_400_BAD_REQUEST)
+    question.question = question_text
+    question.save(update_fields=['question', 'updated'])
+    return Response(PMQuestionSerializer(question).data)

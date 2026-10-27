@@ -37,7 +37,7 @@ A base station has assets (generators, AC units, rectifiers, etc.). For each ass
 - **Checklist responses** (`WorkOrderChecklistResponse`) — one checkbox per `PMQuestion`
 - **Conditions** (M2M to `Condition`) — "select all that apply" observable tags
 - **Issues** — outstanding problems to be followed up; eventually promoted to corrective `WorkOrder`s
-- **done flag** — set automatically when the session ends, if the checklist is fully checked
+- **done flag** — set manually by the technician via a "Mark complete" action on the asset (not automatically when the session ends). Requires either a fully-checked checklist or a non-blank comment explaining why not; Generator-category assets additionally require today's run-hours and diesel-level `MeterReading`s. Can be toggled back off (reopen) while the work order is unlocked.
 
 An asset's checklist represents that it was *inspected*, not that any problem was fixed.
 
@@ -251,10 +251,10 @@ Editing after start is not geography-restricted. The geofence check only gates t
 |---|---|---|
 | Either | Locked or never started | Navigate back immediately. No prompt. |
 | Alarm | Started, not resolved | Modal: *"Leave without resolving this alarm?"* [Cancel] [Leave]. **Leave** exits without resolving; session stays open. |
-| Maintenance | Started, not ended; all asset checklists fully checked | Modal: *"End maintenance?"* [Cancel] [Yes]. **Yes** marks done + records `ended_at` + navigates back. |
-| Maintenance | Started, not ended; some checklists incomplete | Modal: *"Some maintenance tasks have not been completed. End maintenance anyway?"* [Continue maintenance] [End maintenance]. **Continue maintenance** closes modal, stays on Screen 2. **End maintenance** marks done (only fully checked assets) + records `ended_at` + navigates back. |
+| Maintenance | Started, not ended; every asset already marked complete | Modal: *"End maintenance?"* [Cancel] [Yes]. **Yes** records `ended_at` + navigates back. |
+| Maintenance | Started, not ended; some assets not yet marked complete | Modal: *"Some maintenance tasks have not been completed. End maintenance anyway?"* [Continue maintenance] [End maintenance]. **Continue maintenance** closes modal, stays on Screen 2. **End maintenance** records `ended_at` + navigates back — assets already marked complete stay complete; incomplete ones stay incomplete. |
 
-Ending a session always results in status `Complete`, even if some assets were left incomplete. There is no "partially ended" state.
+Ending a session always results in status `Complete`, even if some assets were left incomplete. There is no "partially ended" state. Ending a session does **not** retroactively mark any asset done — completion is only ever set by the technician's own "Mark complete" action on that asset (see §7).
 
 ### Endpoints
 
@@ -345,12 +345,12 @@ Starts the maintenance session. The `geofence_verified` field records whether th
 ---
 
 #### POST `/api/work-orders/{id}/end/`
-Ends the maintenance session. Backend marks `done=true` on every `InspectionResponse` whose checklist is fully checked.
+Ends the maintenance session. Does **not** touch any `InspectionResponse.done` — completion is set independently per asset via `PATCH /api/inspection-responses/{id}/` (see §7).
 
 **Request:** No body.
 **Response 200:**
 ```json
-{ "ended_at": "2026-07-26T14:00:00Z", "assets_marked_done": ["uuid"] }
+{ "ended_at": "2026-07-26T14:00:00Z" }
 ```
 **Response 400:** `{ "detail": "Work order not started." }` | `{ "detail": "Work order already ended." }`
 
@@ -461,19 +461,26 @@ Create an `InspectionResponse` for an asset within a work order. Normally create
 ---
 
 #### PATCH `/api/inspection-responses/{id}/`
-Update `issues_found`, `comments`, and/or `conditions`.
+Update `issues_found`, `comments`, `conditions`, and/or `done`.
 
 **Request (any subset):**
 ```json
 {
   "issues_found": true,
   "comments": "string",
-  "conditions": ["uuid", "uuid"]
+  "conditions": ["uuid", "uuid"],
+  "done": true
 }
 ```
 **Response 200:** Updated inspection response object.
 **Response 400:** `{ "detail": "At least one condition must be selected when issues are found." }`
 **Response 403 (locked):** `{ "detail": "This work order is locked." }`
+
+**Setting `done: true`** (the "Mark complete" action) is gated:
+- The checklist must be fully checked, **or** `comments` must be non-blank (explaining why not). 400: `{ "detail": "Checklist is not fully checked, and no comment was given explaining why." }`
+- If the asset's category is `"Generator"`, a `MeterReading` for both `run_hours` and `diesel_level` must already exist for today. 400: `{ "detail": "Today's run hours and diesel level readings are required for generators." }`
+
+**Setting `done: false`** (reopening) has no gating — always allowed while unlocked.
 
 ---
 
@@ -540,6 +547,8 @@ Returns conditions available for an asset category — both category-specific an
 
 These cover technician responsibilities beyond the routine checklist: diesel delivery supervision, diesel/run-hour monitoring, spare parts requests, and safety/HSE reporting. Available from Screen 2 (station detail) at any time — not gated on an active maintenance session — since deliveries and hazards can occur outside a visit. Hidden once the work order is locked (submitted).
 
+The Site Actions menu on Screen 2 currently exposes only **Report safety issue**. "Log diesel delivery" was removed from this menu — the Diesel tab on Screen 1 (Station List) is now the sole entry point for diesel deliveries. "Request parts" is hidden in the frontend (code kept, not deleted) pending a decision on where it belongs. "Log part usage" moved out of Site Actions entirely — it's now an action on the per-asset Screen 3 (Asset Maintenance), which passes the asset being checked automatically instead of asking the technician to pick one again.
+
 Reports that roll these up (daily activity report, PM report, outstanding work, site visit report) are deferred — see Open Items.
 
 ### Meter Readings
@@ -552,6 +561,8 @@ Body: `{ "asset": "uuid", "reading_type": "run_hours" | "diesel_level", "value":
 
 `recorded_by` is set from the authenticated user. `run_hours` typically pairs with `unit=hours`; `diesel_level` is a dipstick depth reading and pairs with `unit=mm` (matching the same measurement convention as diesel delivery tank levels below). `unit=litres` remains available for sites with a calibrated volume gauge.
 
+**Monotonic validation:** compared against the asset's most recent prior reading of the same `reading_type`, `run_hours` cannot decrease and `diesel_level` cannot increase — a generator only burns diesel down over time between deliveries. 400: `{ "detail": "..." }` on either violation. The one exception is a diesel delivery raising the level back up — see below, which bypasses this check by design since it's a real refill, not a technician-entered reading.
+
 ### Diesel Deliveries
 
 #### GET `/api/diesel-deliveries/?base_station={id}`
@@ -561,6 +572,8 @@ List deliveries at the technician's stations.
 Body: `{ "base_station": "uuid", "vendor": "uuid" (optional), "work_order": "uuid" (optional), "quantity_litres": int, "tank_level_before": int (millimetres, dipstick reading, optional), "tank_level_after": int (millimetres, dipstick reading, optional), "delivered_at": "ISO datetime" (optional, defaults to now), "notes": "" (optional) }`
 
 Tank levels are raw dipstick depth in millimetres, not a percentage — the app does not know each tank's calibration curve, so it records what the technician physically reads off the stick. `recorded_by` is set from the authenticated user. Attach delivery ticket photos via `POST /api/attachments/` with `diesel_delivery=<id>`.
+
+If `tank_level_after` is given, the view also creates a fresh `MeterReading(reading_type=diesel_level, value=tank_level_after)` for the station's Generator asset, so the delivery is immediately reflected in the asset's own readings history (and in the completion gate in §7) without the technician having to enter it twice. This is a direct side effect on creation, not a call to `POST /api/meter-readings/` — it deliberately bypasses that endpoint's monotonic check, since a delivery is the one legitimate way a diesel-level reading is allowed to go up.
 
 ### Parts Requests
 
@@ -613,6 +626,50 @@ Fields: `file` (the image), `type` (free text, e.g. `"delivery_ticket"`, `"hazar
 - No client sign-off step for Service Completion or Part Request receipt — the technician marking it done/received is sufficient.
 - Part request approval (store/manager) is skipped for now; status is only `requested` → `received`.
 - Daily facility-manager review meetings are not tracked in the app.
+
+---
+
+## 8.1 Admin & Test Tooling
+
+Two small tool surfaces, reachable from temporary icon buttons on Screen 1 (Station List). Not part of the core technician workflow — for managing reference data and for demoing/testing the alarm track without waiting for a real fault.
+
+### Asset Catalog (asset categories & checkpoints)
+
+A flat reference/admin page: every `AssetCategory` and its `PMQuestion` checkpoints, editable in place. Not scoped to a station — categories are global, matching how `AssetCheckList` works.
+
+#### GET `/api/asset-categories/`
+Returns every category with its checklist questions.
+```json
+[{ "id": "uuid", "name": "Generator", "checklist_id": "uuid | null", "questions": [{ "id": "uuid", "question": "string" }] }]
+```
+
+#### POST `/api/asset-categories/`
+Body: `{ "name": "string" }`. Creates a new category with no checklist yet.
+
+#### PATCH `/api/asset-categories/{id}/`
+Body: `{ "name": "string" }`. Renames a category.
+
+#### POST `/api/checklist-questions/`
+Body: `{ "asset_category": "uuid", "question": "string" }`. Adds a checkpoint, creating the category's `AssetCheckList` on first use if it doesn't exist yet.
+
+#### PATCH `/api/checklist-questions/{id}/`
+Body: `{ "question": "string" }`. Edits a checkpoint's text.
+
+#### DELETE `/api/checklist-questions/{id}/`
+Removes a checkpoint.
+
+### Alarm Simulator
+
+Raises a real `Alarm` on a real asset on demand, for testing/demoing the alarm track. Station and asset pickers back this.
+
+#### GET `/api/base-stations/`
+The authenticated technician's assigned stations (for the picker's first step).
+
+#### GET `/api/assets/?base_station={id}`
+Active assets at that station (for the picker's second step). 400 if `base_station` is omitted.
+
+#### POST `/api/alarms/`
+Body: `{ "asset": "uuid" }`. Creates an `Alarm` with `raised_at=now()` on that asset. 403/404 if the asset isn't at one of the technician's assigned stations.
 
 ---
 
@@ -698,3 +755,4 @@ The existing `status` choices (`open`, `in_progress`, `complete`, `cancelled`) a
 - [ ] Generated reports — deferred to a later phase: Daily Technician Activity Report, Preventive Maintenance Report, Outstanding Work list, Site Visit Report, Service Completion (all derivable from `WorkOrder`/`InspectionResponse`/`Issue`/`MeterReading`/`DieselDelivery` data already captured)
 - [ ] Diesel consumption reporting (combining `MeterReading` diesel-level readings with `DieselDelivery` quantities into a computed consumption figure) — raw capture exists now; the computed report is deferred with the other reports above
 - [ ] No file-storage decision made for production `Attachment` uploads (currently local dev storage via `MEDIA_ROOT`) — revisit before deploying (S3 or similar)
+- [ ] Scheduling a diesel delivery ahead of time (vs. logging one that already happened) — explicitly deferred, not started

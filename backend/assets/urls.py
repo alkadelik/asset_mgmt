@@ -16,9 +16,14 @@ urlpatterns = [
     path('work-orders/<uuid:pk>/end/', views.work_order_end),
 
     # Alarms
+    path('alarms/', views.alarms),
     path('alarms/<uuid:pk>/', views.alarm_detail),
     path('alarms/<uuid:pk>/resolve/', views.alarm_resolve),
     path('alarms/<uuid:pk>/notes/', views.alarm_add_note),
+
+    # Base stations & assets (pickers)
+    path('base-stations/', views.base_stations),
+    path('assets/', views.assets),
 
     # Inspection responses
     path('inspection-responses/', views.inspection_responses),
@@ -56,4 +61,10 @@ urlpatterns = [
 
     # Attachments
     path('attachments/', views.attachments),
+
+    # Asset categories & checkpoints (admin)
+    path('asset-categories/', views.asset_categories),
+    path('asset-categories/<uuid:pk>/', views.asset_category_detail),
+    path('checklist-questions/', views.checklist_questions),
+    path('checklist-questions/<uuid:pk>/', views.checklist_question_detail),
 ]
