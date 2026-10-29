@@ -284,7 +284,7 @@ class Personnel(AbstractUser):
         Cluster, on_delete=models.SET_NULL, null=True, blank=True, related_name='managers',
         help_text='Cluster Managers only: the cluster they manage.',
     )
-    stations = models.ManyToManyField('BaseStation', blank=True, related_name='assigned_technicians')
+    stations = models.ManyToManyField('BaseStation', blank=True, related_name='assigned_field_team')
     updated = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -561,7 +561,7 @@ class WorkOrder(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default=PRIORITY_MEDIUM)
     due_date = models.DateField(null=True, blank=True)
     completed_date = models.DateField(null=True, blank=True)
-    assigned_technician = models.ForeignKey(
+    assigned_to = models.ForeignKey(
         Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_work_orders'
     )
     description = models.TextField(blank=True)
@@ -590,10 +590,10 @@ class WorkOrder(models.Model):
     def clean(self):
         super().clean()
         if (
-            self.assigned_technician_id and self.assigned_technician.role_id
-            and self.assigned_technician.role.name not in Role.FIELD_ROLES
+            self.assigned_to_id and self.assigned_to.role_id
+            and self.assigned_to.role.name not in Role.FIELD_ROLES
         ):
-            raise ValidationError({'assigned_technician': 'Assigned person must be Field Team or a Team Lead.'})
+            raise ValidationError({'assigned_to': 'Assigned person must be Field Team or a Team Lead.'})
 
     @property
     def target(self):

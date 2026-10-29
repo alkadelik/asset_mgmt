@@ -685,7 +685,7 @@ At submission time (technician ends a session or 6pm auto-submit), every `Issue`
 | `inspection_response.asset` | `asset` (XOR target) |
 | (fixed) | `type = "corrective"` |
 | (fixed) | `status = "open"` |
-| (not set) | `assigned_technician = null` |
+| (not set) | `assigned_to = null` |
 
 After creation, set `Issue.promoted_work_order = <new WorkOrder>`. This makes the issue non-deletable.
 

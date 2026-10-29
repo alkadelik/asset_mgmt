@@ -309,10 +309,10 @@ class AlarmNoteInline(admin.TabularInline):
 
 @admin.register(WorkOrder)
 class WorkOrderAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'type', 'status', 'priority', 'assigned_technician', 'due_date')
+    list_display = ('__str__', 'type', 'status', 'priority', 'assigned_to', 'due_date')
     list_filter = ('type', 'status', 'priority')
     search_fields = ('base_station__name', 'base_station__site_id', 'asset__name', 'asset__tag', 'description')
-    autocomplete_fields = ('base_station', 'asset_category', 'asset', 'pm_schedule', 'asset_checklist', 'assigned_technician')
+    autocomplete_fields = ('base_station', 'asset_category', 'asset', 'pm_schedule', 'asset_checklist', 'assigned_to')
     readonly_fields = ('id', 'created', 'updated')
     inlines = (PartUsageInline, MeterReadingInline, AttachmentWorkOrderInline)
     fieldsets = (
@@ -328,7 +328,7 @@ class WorkOrderAdmin(admin.ModelAdmin):
             'classes': ('collapse',),
         }),
         ('Assignment & Schedule', {
-            'fields': ('assigned_technician', 'due_date', 'completed_date'),
+            'fields': ('assigned_to', 'due_date', 'completed_date'),
         }),
         ('Details', {
             'fields': ('description', 'cost_labour', 'cost_parts'),

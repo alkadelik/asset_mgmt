@@ -422,7 +422,7 @@ wo_a, wo_a_created = WorkOrder.objects.get_or_create(
     defaults={
         "status": WorkOrder.STATUS_IN_PROGRESS,
         "priority": WorkOrder.PRIORITY_MEDIUM,
-        "assigned_technician": tech,
+        "assigned_to": tech,
         "started_at": now - timezone.timedelta(hours=1),
     },
 )
@@ -436,7 +436,7 @@ wo_b, wo_b_created = WorkOrder.objects.get_or_create(
     defaults={
         "status": WorkOrder.STATUS_OPEN,
         "priority": WorkOrder.PRIORITY_MEDIUM,
-        "assigned_technician": tech,
+        "assigned_to": tech,
     },
 )
 if wo_b_created:
@@ -449,7 +449,7 @@ wo_c, wo_c_created = WorkOrder.objects.get_or_create(
     defaults={
         "status": WorkOrder.STATUS_OPEN,
         "priority": WorkOrder.PRIORITY_MEDIUM,
-        "assigned_technician": tech,
+        "assigned_to": tech,
     },
 )
 if wo_c_created:
@@ -462,7 +462,7 @@ wo_d, wo_d_created = WorkOrder.objects.get_or_create(
     defaults={
         "status": WorkOrder.STATUS_OPEN,
         "priority": WorkOrder.PRIORITY_HIGH,
-        "assigned_technician": tech,
+        "assigned_to": tech,
     },
 )
 if wo_d_created:
@@ -475,7 +475,7 @@ wo_e, wo_e_created = WorkOrder.objects.get_or_create(
     defaults={
         "status": WorkOrder.STATUS_OPEN,
         "priority": WorkOrder.PRIORITY_MEDIUM,
-        "assigned_technician": tech,
+        "assigned_to": tech,
     },
 )
 if wo_e_created:
