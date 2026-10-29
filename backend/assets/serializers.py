@@ -2,21 +2,35 @@ from rest_framework import serializers
 from .models import (
     Personnel, BaseStation, WorkOrder, InspectionResponse,
     WorkOrderChecklistResponse, Issue, Condition, Alarm, AlarmNote, Asset,
-    Attachment, DieselDelivery, MeterReading, Part, PartRequest, PartUsage,
-    SafetyReport, Vendor, AssetCategory, AssetCheckList, PMQuestion,
+    Attachment, DieselDelivery, MeterReading, Notification, Part, PartDelivery, PartRequest,
+    PartRequestLine, PartStock, PartUsage, SafetyReport, Vendor, AssetCategory, AssetCheckList,
+    PMQuestion,
 )
+
+
+def person_ref(person):
+    return {'id': str(person.id), 'name': person.name} if person else None
 
 
 class PersonnelSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     stations = serializers.SerializerMethodField()
+    cluster_team = serializers.SerializerMethodField()
+    cluster = serializers.SerializerMethodField()
 
     class Meta:
         model = Personnel
-        fields = ['id', 'username', 'first_name', 'last_name', 'role', 'stations']
+        fields = ['id', 'username', 'first_name', 'last_name', 'role', 'stations', 'cluster_team', 'cluster']
 
     def get_role(self, obj):
         return obj.role.name if obj.role else None
+
+    def get_cluster_team(self, obj):
+        return {'id': str(obj.cluster_team_id), 'name': obj.cluster_team.name} if obj.cluster_team_id else None
+
+    def get_cluster(self, obj):
+        # Set for Cluster Managers: the cluster they manage.
+        return {'id': str(obj.cluster_id), 'name': obj.cluster.name} if obj.cluster_id else None
 
     def get_stations(self, obj):
         return [str(s.id) for s in obj.stations.all()]
@@ -216,7 +230,7 @@ class VendorSerializer(serializers.ModelSerializer):
 class PartSerializer(serializers.ModelSerializer):
     class Meta:
         model = Part
-        fields = ['id', 'name', 'sku', 'unit_cost']
+        fields = ['id', 'name', 'sku', 'kind', 'unit', 'unit_cost']
 
 
 # ── Attachments ───────────────────────────────────────────────────────────────
@@ -256,23 +270,107 @@ class DieselDeliverySerializer(serializers.ModelSerializer):
 
 # ── Part Requests ─────────────────────────────────────────────────────────────
 
-class PartRequestSerializer(serializers.ModelSerializer):
+class PartDeliverySerializer(serializers.ModelSerializer):
+    marked_delivered_by = serializers.SerializerMethodField()
+    received_by = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PartDelivery
+        fields = [
+            'id', 'quantity', 'pickup_location', 'status', 'marked_delivered_by', 'marked_delivered_at',
+            'received_by', 'received_at',
+        ]
+
+    def get_marked_delivered_by(self, obj):
+        return person_ref(obj.marked_delivered_by)
+
+    def get_received_by(self, obj):
+        return person_ref(obj.received_by)
+
+    def get_status(self, obj):
+        return 'complete' if obj.is_complete else 'pending'
+
+
+class PartRequestLineSerializer(serializers.ModelSerializer):
     part = PartSerializer(read_only=True)
+    deliveries = PartDeliverySerializer(many=True, read_only=True)
+    delivered_qty = serializers.IntegerField(read_only=True)
+    shortfall = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = PartRequestLine
+        fields = [
+            'id', 'part', 'quantity', 'required_date', 'is_backdated', 'status', 'decline_reason',
+            'delivered_qty', 'closed_short', 'shortfall', 'deliveries',
+        ]
+
+
+class PartRequestSerializer(serializers.ModelSerializer):
     base_station = BaseStationSummarySerializer(read_only=True)
     requested_by = serializers.SerializerMethodField()
+    team_lead = serializers.SerializerMethodField()
+    cluster_team = serializers.SerializerMethodField()
+    lines = PartRequestLineSerializer(many=True, read_only=True)
 
     class Meta:
         model = PartRequest
         fields = [
-            'id', 'part', 'base_station', 'work_order', 'asset', 'quantity',
-            'reason', 'status', 'requested_by', 'requested_at', 'received_at',
+            'id', 'base_station', 'work_order', 'asset', 'notes', 'requested_by', 'team_lead',
+            'cluster_team', 'requested_at', 'lines',
         ]
-        read_only_fields = ['id', 'status', 'requested_by', 'requested_at', 'received_at']
 
     def get_requested_by(self, obj):
-        if obj.requested_by:
-            return {'id': str(obj.requested_by.id), 'name': obj.requested_by.name}
-        return None
+        return person_ref(obj.requested_by)
+
+    def get_team_lead(self, obj):
+        return person_ref(obj.team_lead)
+
+    def get_cluster_team(self, obj):
+        return {'id': str(obj.cluster_team_id), 'name': obj.cluster_team.name} if obj.cluster_team_id else None
+
+
+class ManagerRequestRowSerializer(serializers.ModelSerializer):
+    """One row of the Cluster Manager's Requests list: one request line."""
+    request_id = serializers.UUIDField(source='request.id', read_only=True)
+    requested_date = serializers.DateTimeField(source='request.requested_at', read_only=True)
+    part = PartSerializer(read_only=True)
+    base_station = serializers.SerializerMethodField()
+    requested_by = serializers.SerializerMethodField()
+    team_lead = serializers.SerializerMethodField()
+    delivered_qty = serializers.IntegerField(read_only=True)
+    pickup_location = serializers.SerializerMethodField()
+    pickup_date = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PartRequestLine
+        fields = [
+            'id', 'request_id', 'requested_date', 'part', 'base_station', 'requested_by', 'required_date',
+            'is_backdated', 'team_lead', 'quantity', 'delivered_qty', 'status', 'decline_reason',
+            'closed_short', 'pickup_location', 'pickup_date',
+        ]
+
+    def get_base_station(self, obj):
+        st = obj.request.base_station
+        return {'id': str(st.id), 'site_id': st.site_id, 'name': st.name}
+
+    def get_requested_by(self, obj):
+        return person_ref(obj.request.requested_by)
+
+    def get_team_lead(self, obj):
+        return person_ref(obj.request.team_lead)
+
+    def _latest(self, obj):
+        deliveries = list(obj.deliveries.all())
+        return deliveries[-1] if deliveries else None
+
+    def get_pickup_location(self, obj):
+        latest = self._latest(obj)
+        return latest.pickup_location if latest else ''
+
+    def get_pickup_date(self, obj):
+        received = [d.received_at for d in obj.deliveries.all() if d.received_at]
+        return max(received) if received else None
 
 
 # ── Part Usage ────────────────────────────────────────────────────────────────
@@ -281,19 +379,56 @@ class PartUsageSerializer(serializers.ModelSerializer):
     part = PartSerializer(read_only=True)
     asset = AssetSummarySerializer(read_only=True)
     recorded_by = serializers.SerializerMethodField()
+    base_station = serializers.SerializerMethodField()
+    cluster_team = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = PartUsage
         fields = [
-            'id', 'work_order', 'asset', 'part', 'qty_used', 'notes',
-            'recorded_by', 'created',
+            'id', 'work_order', 'base_station', 'asset', 'part', 'part_identifier', 'qty_used', 'notes',
+            'photo_url', 'photo_taken_at', 'cluster_team', 'recorded_by', 'created',
         ]
         read_only_fields = ['id', 'recorded_by', 'created']
 
     def get_recorded_by(self, obj):
-        if obj.recorded_by:
-            return {'id': str(obj.recorded_by.id), 'name': obj.recorded_by.name}
-        return None
+        return person_ref(obj.recorded_by)
+
+    def get_base_station(self, obj):
+        st = obj.work_order.base_station
+        return {'id': str(st.id), 'site_id': st.site_id, 'name': st.name} if st else None
+
+    def get_cluster_team(self, obj):
+        return {'id': str(obj.cluster_team_id), 'name': obj.cluster_team.name} if obj.cluster_team_id else None
+
+    def get_photo_url(self, obj):
+        if not obj.photo:
+            return None
+        request = self.context.get('request')
+        return request.build_absolute_uri(obj.photo.url) if request else obj.photo.url
+
+
+# ── Stock & Notifications ─────────────────────────────────────────────────────
+
+class PartStockSerializer(serializers.ModelSerializer):
+    part = PartSerializer(read_only=True)
+    cluster_team = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PartStock
+        fields = ['id', 'part', 'cluster_team', 'qty', 'reorder_threshold']
+
+    def get_cluster_team(self, obj):
+        return {'id': str(obj.cluster_team_id), 'name': obj.cluster_team.name} if obj.cluster_team_id else None
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = [
+            'id', 'event', 'message', 'part_request', 'part_request_line', 'part_delivery', 'part_usage',
+            'read_at', 'created',
+        ]
 
 
 # ── Safety Reports ────────────────────────────────────────────────────────────

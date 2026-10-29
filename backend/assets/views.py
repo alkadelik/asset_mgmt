@@ -1,6 +1,11 @@
+import datetime
+import json
 import uuid
 
+from django.conf import settings
 from django.core.files.storage import default_storage
+from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
@@ -15,8 +20,10 @@ from .models import (
     WorkOrder, Alarm, AlarmNote, InspectionResponse,
     WorkOrderChecklistResponse, Issue, Condition, Asset,
     PMQuestion, AssetCheckList, AssetCategory, Attachment, BaseStation, DieselDelivery,
-    MeterReading, Part, PartRequest, PartUsage, SafetyReport, Vendor,
+    MeterReading, Notification, Part, PartDelivery, PartRequest, PartRequestLine, PartStock,
+    PartUsage, SafetyReport, Vendor,
 )
+from . import parts as parts_rules
 from .serializers import (
     PersonnelSerializer, WorkOrderDetailSerializer, AlarmDetailSerializer,
     AlarmNoteSerializer, InspectionResponseDetailSerializer,
@@ -24,7 +31,8 @@ from .serializers import (
     BaseStationSummarySerializer, WorkOrderSummarySerializer,
     AlarmSummarySerializer, AssetSummarySerializer,
     AttachmentSerializer, DieselDeliverySerializer, MeterReadingSerializer,
-    PartRequestSerializer, PartSerializer, PartUsageSerializer,
+    PartRequestSerializer, PartSerializer, PartUsageSerializer, ManagerRequestRowSerializer,
+    NotificationSerializer, PartStockSerializer,
     SafetyReportSerializer, VendorSerializer,
     AssetCategorySerializer, PMQuestionSerializer,
 )
@@ -577,6 +585,9 @@ def parts(request):
     search = request.query_params.get('search')
     if search:
         qs = qs.filter(name__icontains=search)
+    kind = request.query_params.get('kind')
+    if kind:
+        qs = qs.filter(kind=kind)
     return Response(PartSerializer(qs, many=True).data)
 
 
@@ -655,74 +666,143 @@ def diesel_deliveries(request):
 
 # ── Part Requests ─────────────────────────────────────────────────────────────
 
+def _parts_error(exc):
+    return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _request_queryset():
+    return PartRequest.objects.select_related(
+        'base_station__manager', 'requested_by', 'team_lead', 'cluster_team',
+    ).prefetch_related('base_station__clients', 'lines__part', 'lines__deliveries__received_by',
+                       'lines__deliveries__marked_delivered_by')
+
+
 @api_view(['GET', 'POST'])
 def part_requests(request):
     if request.method == 'GET':
-        qs = PartRequest.objects.filter(requested_by=request.user).select_related('part', 'base_station')
+        qs = _request_queryset().filter(requested_by=request.user)
         return Response(PartRequestSerializer(qs, many=True).data)
 
-    part_id = request.data.get('part')
-    base_station_id = request.data.get('base_station')
-    quantity = request.data.get('quantity')
-
-    if not part_id or not base_station_id or not quantity:
-        return Response(
-            {'detail': 'part, base_station, and quantity are required.'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    base_station = BaseStation.objects.filter(pk=request.data.get('base_station')).first() \
+        if request.data.get('base_station') else None
+    if base_station is None:
+        return Response({'detail': 'base_station is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    lines = request.data.get('lines') or []
+    if isinstance(lines, str):
+        try:
+            lines = json.loads(lines)
+        except ValueError:
+            return Response({'detail': 'lines must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not isinstance(lines, list):
+        return Response({'detail': 'lines must be a list.'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        part = Part.objects.get(pk=part_id)
-        base_station = BaseStation.objects.get(pk=base_station_id)
-    except (Part.DoesNotExist, BaseStation.DoesNotExist):
-        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-    part_request, _ = PartRequest.objects.get_or_create(
-        id=request.data.get('id') or uuid.uuid4(),
-        defaults={
-            'part': part,
-            'base_station': base_station,
-            'work_order_id': request.data.get('work_order') or None,
-            'asset_id': request.data.get('asset') or None,
-            'quantity': quantity,
-            'reason': request.data.get('reason', ''),
-            'requested_by': request.user,
-        },
+        part_request, created = parts_rules.create_request(
+            user=request.user,
+            base_station=base_station,
+            lines=lines,
+            request_id=request.data.get('id') or None,
+            work_order=WorkOrder.objects.filter(pk=request.data.get('work_order')).first()
+            if request.data.get('work_order') else None,
+            asset=Asset.objects.filter(pk=request.data.get('asset')).first()
+            if request.data.get('asset') else None,
+            notes=request.data.get('notes', ''),
+        )
+    except parts_rules.PartsError as exc:
+        return _parts_error(exc)
+    part_request = _request_queryset().get(pk=part_request.pk)
+    return Response(
+        PartRequestSerializer(part_request).data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
-    return Response(PartRequestSerializer(part_request).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
-def part_request_receive(request, pk):
-    try:
-        part_request = PartRequest.objects.get(pk=pk)
-    except PartRequest.DoesNotExist:
+def part_request_cancel(request, pk):
+    part_request = PartRequest.objects.filter(pk=pk, requested_by=request.user).first()
+    if part_request is None:
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        parts_rules.cancel_request(part_request, by=request.user)
+    except parts_rules.PartsError as exc:
+        return _parts_error(exc)
+    return Response(PartRequestSerializer(_request_queryset().get(pk=pk)).data)
 
-    if part_request.status == PartRequest.STATUS_RECEIVED:
-        return Response({'detail': 'Already received.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    part_request.status = PartRequest.STATUS_RECEIVED
-    part_request.received_at = timezone.now()
-    part_request.save(update_fields=['status', 'received_at', 'updated'])
-    return Response(PartRequestSerializer(part_request).data)
+@api_view(['POST'])
+def part_request_line_receipts(request, pk):
+    """The Field Team confirms they received parts before the delivery has been recorded."""
+    line = PartRequestLine.objects.select_related('request').filter(pk=pk).first()
+    if line is None:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        parts_rules.record_receipt(
+            line, by=request.user, quantity=request.data.get('quantity'),
+            delivery_id=request.data.get('id') or None,
+        )
+    except parts_rules.PartsError as exc:
+        return _parts_error(exc)
+    return Response(PartRequestSerializer(_request_queryset().get(pk=line.request_id)).data,
+                    status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+def part_delivery_confirm_received(request, pk):
+    delivery = PartDelivery.objects.select_related('line__request').filter(pk=pk).first()
+    if delivery is None:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    try:
+        parts_rules.confirm_received(delivery, by=request.user)
+    except parts_rules.PartsError as exc:
+        return _parts_error(exc)
+    return Response(PartRequestSerializer(_request_queryset().get(pk=delivery.line.request_id)).data)
 
 
 # ── Part Usage ────────────────────────────────────────────────────────────────
 
+def _usage_queryset():
+    return PartUsage.objects.select_related(
+        'part', 'asset', 'recorded_by', 'cluster_team', 'work_order__base_station',
+    )
+
+
+def _check_photo(upload):
+    """Returns an error message, or None if the upload is an acceptable JPEG."""
+    if upload.size > settings.PART_USAGE_PHOTO_MAX_BYTES:
+        limit_mb = settings.PART_USAGE_PHOTO_MAX_BYTES / (1024 * 1024)
+        return f'The photo is too large; the limit is {limit_mb:g} MB.'
+    try:
+        from PIL import Image
+        image = Image.open(upload)
+        image_format = image.format
+        image.verify()
+    except Exception:
+        return 'The photo could not be read as an image.'
+    finally:
+        upload.seek(0)
+    if image_format != 'JPEG':
+        return 'The photo must be a JPEG.'
+    return None
+
+
 @api_view(['GET', 'POST'])
 def part_usages(request):
     if request.method == 'GET':
-        qs = PartUsage.objects.filter(
-            asset__location__base_station__in=request.user.stations.all()
-        ).select_related('part', 'asset')
+        qs = _usage_queryset().filter(asset__location__base_station__in=request.user.stations.all())
         work_order_id = request.query_params.get('work_order')
         if work_order_id:
             qs = qs.filter(work_order_id=work_order_id)
         asset_id = request.query_params.get('asset')
         if asset_id:
             qs = qs.filter(asset_id=asset_id)
-        return Response(PartUsageSerializer(qs, many=True).data)
+        return Response(PartUsageSerializer(qs, many=True, context={'request': request}).data)
+
+    client_id = request.data.get('id')
+    if client_id:
+        existing = _usage_queryset().filter(pk=client_id).first()
+        if existing:
+            # Already recorded (an offline log replayed): return it without taking stock again.
+            return Response(PartUsageSerializer(existing, context={'request': request}).data)
 
     work_order_id = request.data.get('work_order')
     asset_id = request.data.get('asset')
@@ -735,6 +815,21 @@ def part_usages(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    photo = request.FILES.get('photo')
+    if photo is None and settings.PART_USAGE_PHOTO_REQUIRED:
+        return Response({'detail': 'A photo of the part is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    if photo is not None:
+        problem = _check_photo(photo)
+        if problem:
+            return Response({'detail': problem}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        qty_used = int(qty_used)
+    except (TypeError, ValueError):
+        return Response({'detail': 'qty_used must be a whole number.'}, status=status.HTTP_400_BAD_REQUEST)
+    if qty_used < 1:
+        return Response({'detail': 'qty_used must be at least 1.'}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
         wo = WorkOrder.objects.get(pk=work_order_id)
         asset = Asset.objects.get(pk=asset_id)
@@ -742,18 +837,138 @@ def part_usages(request):
     except (WorkOrder.DoesNotExist, Asset.DoesNotExist, Part.DoesNotExist):
         return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    usage, _ = PartUsage.objects.get_or_create(
-        id=request.data.get('id') or uuid.uuid4(),
-        defaults={
-            'work_order': wo,
-            'asset': asset,
-            'part': part,
-            'qty_used': qty_used,
-            'notes': request.data.get('notes', ''),
-            'recorded_by': request.user,
-        },
+    taken_at = request.data.get('photo_taken_at')
+    with transaction.atomic():
+        usage = PartUsage(
+            id=client_id or uuid.uuid4(),
+            work_order=wo,
+            asset=asset,
+            part=part,
+            qty_used=qty_used,
+            notes=request.data.get('notes', ''),
+            part_identifier=request.data.get('part_identifier', ''),
+            photo_taken_at=parse_datetime(taken_at) if taken_at else None,
+            cluster_team=request.user.cluster_team,
+            recorded_by=request.user,
+        )
+        if photo is not None:
+            usage.photo.save(f'{usage.id}.jpg', photo, save=False)
+        usage.save()
+        parts_rules.take_usage_from_stock(usage, by=request.user)
+    return Response(
+        PartUsageSerializer(_usage_queryset().get(pk=usage.pk), context={'request': request}).data,
+        status=status.HTTP_201_CREATED,
     )
-    return Response(PartUsageSerializer(usage).data, status=status.HTTP_201_CREATED)
+
+
+# ── Stock ─────────────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def team_stock(request):
+    """What the logged-in person's cluster team holds."""
+    team = request.user.cluster_team
+    if team is None:
+        return Response({'cluster_team': None, 'items': []})
+    qs = PartStock.objects.filter(cluster_team=team).select_related('part', 'cluster_team').order_by('part__name')
+    return Response({
+        'cluster_team': {'id': str(team.id), 'name': team.name},
+        'items': PartStockSerializer(qs, many=True).data,
+    })
+
+
+# ── Cluster Manager lists ─────────────────────────────────────────────────────
+# Scoped to the cluster the manager is assigned to. Role checks come with API enforcement later.
+
+def _date_param(request, name):
+    value = request.query_params.get(name)
+    if not value:
+        return None
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+@api_view(['GET'])
+def manager_part_requests(request):
+    qs = PartRequestLine.objects.filter(
+        request__base_station__cluster_id=request.user.cluster_id,
+    ).select_related(
+        'part', 'request__base_station', 'request__requested_by', 'request__team_lead',
+    ).prefetch_related('deliveries').order_by('-request__requested_at', 'created')
+    params = request.query_params
+    if params.get('base_station'):
+        qs = qs.filter(request__base_station_id=params['base_station'])
+    if params.get('part'):
+        qs = qs.filter(part_id=params['part'])
+    if params.get('status'):
+        qs = qs.filter(status=params['status'])
+    if params.get('backdated') in ('true', '1'):
+        qs = qs.filter(is_backdated=True)
+    date_from, date_to = _date_param(request, 'date_from'), _date_param(request, 'date_to')
+    if date_from:
+        qs = qs.filter(request__requested_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(request__requested_at__date__lte=date_to)
+    return Response(ManagerRequestRowSerializer(qs, many=True).data)
+
+
+@api_view(['GET'])
+def manager_part_usages(request):
+    qs = _usage_queryset().filter(work_order__base_station__cluster_id=request.user.cluster_id)
+    params = request.query_params
+    if params.get('base_station'):
+        qs = qs.filter(work_order__base_station_id=params['base_station'])
+    if params.get('part'):
+        qs = qs.filter(part_id=params['part'])
+    if params.get('recorded_by'):
+        qs = qs.filter(recorded_by_id=params['recorded_by'])
+    date_from, date_to = _date_param(request, 'date_from'), _date_param(request, 'date_to')
+    if date_from:
+        qs = qs.filter(created__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created__date__lte=date_to)
+    return Response(PartUsageSerializer(qs, many=True, context={'request': request}).data)
+
+
+@api_view(['GET'])
+def manager_stock(request):
+    """Stock held by each team in the manager's cluster, plus the cluster total per part."""
+    rows = PartStock.objects.filter(
+        cluster_team__cluster_id=request.user.cluster_id,
+    ).select_related('part', 'cluster_team').order_by('cluster_team__name', 'part__name')
+    totals = (
+        rows.values('part_id', 'part__name', 'part__sku').annotate(qty=Sum('qty')).order_by('part__name')
+    )
+    return Response({
+        'teams': PartStockSerializer(rows, many=True).data,
+        'totals': [
+            {'part': {'id': str(t['part_id']), 'name': t['part__name'], 'sku': t['part__sku']}, 'qty': t['qty']}
+            for t in totals
+        ],
+    })
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+def notifications(request):
+    qs = Notification.objects.filter(recipient=request.user)
+    return Response({
+        'unread': qs.filter(read_at__isnull=True).count(),
+        'results': NotificationSerializer(qs[:100], many=True).data,
+    })
+
+
+@api_view(['POST'])
+def notification_read(request, pk):
+    notification = Notification.objects.filter(pk=pk, recipient=request.user).first()
+    if notification is None:
+        return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+    if notification.read_at is None:
+        notification.read_at = timezone.now()
+        notification.save(update_fields=['read_at'])
+    return Response(NotificationSerializer(notification).data)
 
 
 # ── Safety Reports ────────────────────────────────────────────────────────────

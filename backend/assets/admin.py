@@ -1,5 +1,8 @@
-from django.contrib import admin
+from django import forms
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
+
+from . import parts as parts_rules
 
 from .models import (
     Alarm,
@@ -20,8 +23,11 @@ from .models import (
     Issue,
     Location,
     MeterReading,
+    Notification,
     Part,
+    PartDelivery,
     PartRequest,
+    PartRequestLine,
     PartStock,
     PartUsage,
     Personnel,
@@ -32,6 +38,7 @@ from .models import (
     Role,
     SafetyReport,
     Station,
+    StockMovement,
     Vendor,
     WorkOrder,
     WorkOrderChecklistResponse,
@@ -55,8 +62,9 @@ class PMQuestionInline(admin.TabularInline):
 class PartUsageInline(admin.TabularInline):
     model = PartUsage
     extra = 0
-    fields = ('asset', 'part', 'qty_used', 'notes')
+    fields = ('asset', 'part', 'qty_used', 'notes', 'photo')
     autocomplete_fields = ('asset', 'part')
+    readonly_fields = ('photo',)
 
 
 class MeterReadingInline(admin.TabularInline):
@@ -177,18 +185,18 @@ class RoleAdmin(admin.ModelAdmin):
 class PersonnelAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
         ('Role & Assignment', {
-            'fields': ('role', 'station', 'cluster_team', 'stations'),
+            'fields': ('role', 'station', 'cluster_team', 'cluster', 'stations'),
         }),
     )
     add_fieldsets = UserAdmin.add_fieldsets + (
         ('Role & Assignment', {
-            'fields': ('role', 'station', 'cluster_team'),
+            'fields': ('role', 'station', 'cluster_team', 'cluster'),
         }),
     )
-    list_display = ('username', 'first_name', 'last_name', 'email', 'role', 'station', 'is_active')
+    list_display = ('username', 'first_name', 'last_name', 'email', 'role', 'cluster_team', 'cluster', 'is_active')
     list_filter = UserAdmin.list_filter + ('role', 'station')
     search_fields = ('username', 'first_name', 'last_name', 'email')
-    autocomplete_fields = ('role', 'station', 'cluster_team')
+    autocomplete_fields = ('role', 'station', 'cluster_team', 'cluster')
     filter_horizontal = ('stations',)
     readonly_fields = ('id', 'date_joined', 'last_login', 'updated')
 
@@ -344,8 +352,8 @@ class VendorAdmin(admin.ModelAdmin):
 
 @admin.register(Part)
 class PartAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sku', 'vendor', 'unit_cost', 'created')
-    list_filter = ('vendor',)
+    list_display = ('name', 'sku', 'kind', 'unit', 'vendor', 'unit_cost', 'created')
+    list_filter = ('kind', 'vendor')
     search_fields = ('name', 'sku')
     autocomplete_fields = ('vendor',)
     readonly_fields = ('id', 'created', 'updated')
@@ -353,11 +361,57 @@ class PartAdmin(admin.ModelAdmin):
 
 @admin.register(PartStock)
 class PartStockAdmin(admin.ModelAdmin):
-    list_display = ('part', 'cluster_group', 'qty', 'reorder_threshold')
-    list_filter = ('cluster_group',)
+    """Read-only quantities: stock changes only through movements, so the log explains every number.
+    To change stock, add an Adjustment under Stock movements."""
+    list_display = ('part', 'region', 'cluster_team', 'qty', 'reorder_threshold')
+    list_filter = ('region', 'cluster_team__cluster')
     search_fields = ('part__name', 'part__sku')
-    autocomplete_fields = ('part', 'cluster_group')
-    readonly_fields = ('id', 'created', 'updated')
+    autocomplete_fields = ('part', 'region', 'cluster_team')
+    readonly_fields = ('id', 'qty', 'created', 'updated')
+
+
+class StockAdjustmentForm(forms.ModelForm):
+    class Meta:
+        model = StockMovement
+        fields = ('part', 'region', 'cluster_team', 'change', 'note')
+
+    def clean(self):
+        data = super().clean()
+        if bool(data.get('region')) == bool(data.get('cluster_team')):
+            raise forms.ValidationError('Choose either a regional store or a cluster team, not both.')
+        if not data.get('change'):
+            raise forms.ValidationError('The change must be a non-zero number.')
+        if not (data.get('note') or '').strip():
+            raise forms.ValidationError('An adjustment needs a reason in the note.')
+        if data.get('part'):
+            holder = {'region': data['region']} if data.get('region') else {'cluster_team': data['cluster_team']}
+            on_hand = PartStock.objects.filter(part=data['part'], **holder).values_list('qty', flat=True).first() or 0
+            if on_hand + data['change'] < 0:
+                raise forms.ValidationError(f'Only {on_hand} in stock there; this would go below zero.')
+        return data
+
+
+@admin.register(StockMovement)
+class StockMovementAdmin(admin.ModelAdmin):
+    """The stock log. Adding one here records a manual adjustment (count, write-off, new stock in)."""
+    form = StockAdjustmentForm
+    list_display = ('created', 'part', 'region', 'cluster_team', 'change', 'reason', 'created_by')
+    list_filter = ('reason', 'region')
+    search_fields = ('part__name', 'part__sku', 'note')
+    autocomplete_fields = ('part', 'region', 'cluster_team')
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        movement = parts_rules.adjust_stock(
+            obj.part, obj.change, region=obj.region, team=obj.cluster_team, note=obj.note, by=request.user,
+        )
+        obj.pk, obj.created, obj._state.adding = movement.pk, movement.created, False
+        self.message_user(request, f'Stock is now {movement.stock_row.qty}.', messages.SUCCESS)
 
 
 # ── Supporting models ─────────────────────────────────────────────────────────
@@ -380,20 +434,134 @@ class DieselDeliveryAdmin(admin.ModelAdmin):
     readonly_fields = ('id', 'created', 'updated')
 
 
+class PartRequestLineInline(admin.TabularInline):
+    model = PartRequestLine
+    extra = 0
+    fields = ('part', 'quantity', 'required_date', 'is_backdated', 'status', 'decline_reason')
+    readonly_fields = ('is_backdated', 'status')
+    autocomplete_fields = ('part',)
+    show_change_link = True
+
+
 @admin.register(PartRequest)
 class PartRequestAdmin(admin.ModelAdmin):
-    list_display = ('part', 'base_station', 'quantity', 'status', 'requested_by', 'requested_at')
-    list_filter = ('status',)
-    search_fields = ('part__name', 'part__sku', 'base_station__name', 'base_station__site_id')
-    autocomplete_fields = ('part', 'base_station', 'work_order', 'asset', 'requested_by')
+    list_display = ('base_station', 'requested_by', 'cluster_team', 'requested_at')
+    search_fields = ('base_station__name', 'base_station__site_id', 'requested_by__username')
+    autocomplete_fields = ('base_station', 'work_order', 'asset', 'requested_by', 'cluster_team', 'team_lead')
     readonly_fields = ('id', 'requested_at', 'created', 'updated')
+    inlines = (PartRequestLineInline,)
+
+
+class PartDeliveryInline(admin.TabularInline):
+    model = PartDelivery
+    extra = 0
+    fields = ('quantity', 'pickup_location', 'marked_delivered_by', 'marked_delivered_at',
+              'received_by', 'received_at', 'stock_moved')
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class RecordDeliveryForm(forms.ModelForm):
+    class Meta:
+        model = PartDelivery
+        fields = ('line', 'quantity', 'pickup_location')
+
+    def clean(self):
+        data = super().clean()
+        if data.get('line') and data.get('quantity'):
+            try:
+                parts_rules.check_can_record_delivery(data['line'], data['quantity'])
+            except parts_rules.PartsError as exc:
+                raise forms.ValidationError(str(exc))
+        return data
+
+
+@admin.register(PartRequestLine)
+class PartRequestLineAdmin(admin.ModelAdmin):
+    """Stands in for the Regional Manager until that phase is built: approve, decline (fill in
+    the decline reason first) and close short from the actions menu; record a delivery under
+    Part deliveries."""
+    list_display = ('part', 'request', 'quantity', 'delivered', 'required_date', 'is_backdated', 'status')
+    list_filter = ('status', 'is_backdated')
+    search_fields = ('part__name', 'part__sku', 'request__base_station__site_id')
+    autocomplete_fields = ('request', 'part')
+    readonly_fields = ('id', 'status', 'is_backdated', 'decided_by', 'decided_at', 'closed_short',
+                       'closed_short_by', 'closed_short_at', 'created', 'updated')
+    inlines = (PartDeliveryInline,)
+    actions = ('approve', 'decline', 'close_short')
+
+    @admin.display(description='Delivered')
+    def delivered(self, obj):
+        return f'{obj.delivered_qty} of {obj.quantity}'
+
+    def _run(self, request, queryset, fn, done):
+        ok = 0
+        for line in queryset:
+            try:
+                fn(line)
+                ok += 1
+            except parts_rules.PartsError as exc:
+                self.message_user(request, f'{line}: {exc}', messages.ERROR)
+        if ok:
+            self.message_user(request, f'{done} {ok} part(s).', messages.SUCCESS)
+
+    @admin.action(description='Approve selected parts')
+    def approve(self, request, queryset):
+        self._run(request, queryset, lambda l: parts_rules.approve_line(l, by=request.user), 'Approved')
+
+    @admin.action(description='Decline selected parts (uses each line\'s decline reason)')
+    def decline(self, request, queryset):
+        self._run(request, queryset,
+                  lambda l: parts_rules.decline_line(l, by=request.user, reason=l.decline_reason), 'Declined')
+
+    @admin.action(description='Close selected parts short')
+    def close_short(self, request, queryset):
+        self._run(request, queryset, lambda l: parts_rules.close_short(l, by=request.user), 'Closed')
+
+
+@admin.register(PartDelivery)
+class PartDeliveryAdmin(admin.ModelAdmin):
+    """Adding a delivery here records it from the regional store (the approver's side)."""
+    form = RecordDeliveryForm
+    list_display = ('line', 'quantity', 'marked_delivered_at', 'received_at', 'stock_moved')
+    list_filter = ('stock_moved',)
+    autocomplete_fields = ('line',)
+    actions = ('mark_delivered',)
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def save_model(self, request, obj, form, change):
+        delivery = parts_rules.record_delivery(
+            obj.line, by=request.user, quantity=obj.quantity, pickup_location=obj.pickup_location,
+        )
+        obj.pk, obj._state.adding = delivery.pk, False
+
+    @admin.action(description='Mark selected as delivered (Field Team already confirmed receipt)')
+    def mark_delivered(self, request, queryset):
+        for delivery in queryset:
+            try:
+                parts_rules.mark_delivered(delivery, by=request.user)
+            except parts_rules.PartsError as exc:
+                self.message_user(request, f'{delivery}: {exc}', messages.ERROR)
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('created', 'recipient', 'event', 'message', 'read_at')
+    list_filter = ('event',)
+    search_fields = ('recipient__username', 'message')
+    readonly_fields = [f.name for f in Notification._meta.fields]
 
 
 @admin.register(PartUsage)
 class PartUsageAdmin(admin.ModelAdmin):
-    list_display = ('part', 'asset', 'qty_used', 'work_order', 'recorded_by', 'created')
+    list_display = ('part', 'asset', 'qty_used', 'cluster_team', 'work_order', 'recorded_by', 'created')
     search_fields = ('part__name', 'part__sku', 'asset__name', 'asset__tag')
-    autocomplete_fields = ('work_order', 'asset', 'part', 'recorded_by')
+    autocomplete_fields = ('work_order', 'asset', 'part', 'recorded_by', 'cluster_team')
     readonly_fields = ('id', 'created', 'updated')
 
 

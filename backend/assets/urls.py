@@ -51,10 +51,22 @@ urlpatterns = [
 
     # Part requests
     path('part-requests/', views.part_requests),
-    path('part-requests/<uuid:pk>/receive/', views.part_request_receive),
+    path('part-requests/<uuid:pk>/cancel/', views.part_request_cancel),
+    path('part-request-lines/<uuid:pk>/receipts/', views.part_request_line_receipts),
+    path('part-deliveries/<uuid:pk>/confirm-received/', views.part_delivery_confirm_received),
 
     # Part usage
     path('part-usages/', views.part_usages),
+    path('team-stock/', views.team_stock),
+
+    # Cluster Manager lists (scoped to the manager's cluster)
+    path('manager/part-requests/', views.manager_part_requests),
+    path('manager/part-usages/', views.manager_part_usages),
+    path('manager/stock/', views.manager_stock),
+
+    # Notifications
+    path('notifications/', views.notifications),
+    path('notifications/<uuid:pk>/read/', views.notification_read),
 
     # Safety reports
     path('safety-reports/', views.safety_reports),

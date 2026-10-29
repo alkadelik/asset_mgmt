@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -141,3 +142,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
+
+# Part usage photos. Required for every new usage log; set PART_USAGE_PHOTO_REQUIRED=false in the
+# environment only while the mobile app's camera step isn't released yet.
+PART_USAGE_PHOTO_REQUIRED = os.environ.get('PART_USAGE_PHOTO_REQUIRED', 'true').lower() != 'false'
+PART_USAGE_PHOTO_MAX_BYTES = 2 * 1024 * 1024
