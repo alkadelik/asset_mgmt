@@ -188,14 +188,20 @@ class Asset(models.Model):
 
 
 class Role(models.Model):
-    TECHNICIAN = 'technician'
+    FIELD_TEAM = 'field_team'
+    TEAM_LEAD = 'team_lead'
     REGIONAL_MANAGER = 'regional_manager'
     CLUSTER_GROUP_MANAGER = 'cluster_group_manager'
+    CLUSTER_MANAGER = 'cluster_manager'
     NAME_CHOICES = [
-        (TECHNICIAN, 'Technician'),
+        (FIELD_TEAM, 'Field Team'),
+        (TEAM_LEAD, 'Team Lead'),
         (REGIONAL_MANAGER, 'Regional Manager'),
         (CLUSTER_GROUP_MANAGER, 'Cluster Group Manager'),
+        (CLUSTER_MANAGER, 'Cluster Manager'),
     ]
+    # Roles that do base-station maintenance and see the Field Team screens.
+    FIELD_ROLES = (FIELD_TEAM, TEAM_LEAD)
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=50, choices=NAME_CHOICES, unique=True)
@@ -257,6 +263,11 @@ class ClusterTeam(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
+    @property
+    def team_lead(self):
+        """The team's Team Lead (one per team), or None."""
+        return self.members.filter(role__name=Role.TEAM_LEAD).first()
+
     def __str__(self):
         return self.name
 
@@ -268,11 +279,25 @@ class Personnel(AbstractUser):
     cluster_team = models.ForeignKey(
         ClusterTeam, on_delete=models.SET_NULL, null=True, blank=True, related_name='members'
     )
+    # The one cluster a Cluster Manager is assigned to.
+    cluster = models.ForeignKey(
+        Cluster, on_delete=models.SET_NULL, null=True, blank=True, related_name='managers',
+        help_text='Cluster Managers only: the cluster they manage.',
+    )
     stations = models.ManyToManyField('BaseStation', blank=True, related_name='assigned_technicians')
     updated = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name_plural = 'personnel'
+
+    def clean(self):
+        super().clean()
+        if self.role_id and self.role.name == Role.TEAM_LEAD and self.cluster_team_id:
+            other_lead = Personnel.objects.filter(
+                cluster_team_id=self.cluster_team_id, role__name=Role.TEAM_LEAD,
+            ).exclude(pk=self.pk).first()
+            if other_lead:
+                raise ValidationError({'role': f'{self.cluster_team} already has a Team Lead ({other_lead}).'})
 
     @property
     def name(self):
@@ -318,10 +343,27 @@ class Vendor(models.Model):
 
 
 class Part(models.Model):
+    KIND_CONSUMABLE = 'consumable'
+    KIND_SPARE_PART = 'spare_part'
+    KIND_CHOICES = [
+        (KIND_CONSUMABLE, 'Consumable'),
+        (KIND_SPARE_PART, 'Spare part'),
+    ]
+    UNIT_EACH = 'each'
+    UNIT_LITRE = 'litre'
+    UNIT_KG = 'kg'
+    UNIT_CHOICES = [
+        (UNIT_EACH, 'Each'),
+        (UNIT_LITRE, 'Litre'),
+        (UNIT_KG, 'Kg'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='parts')
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=100, unique=True)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default=KIND_SPARE_PART)
+    unit = models.CharField(max_length=10, choices=UNIT_CHOICES, default=UNIT_EACH)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
@@ -341,13 +383,13 @@ class AssetCheckList(models.Model):
     asset = models.ForeignKey(
         Asset, on_delete=models.CASCADE, null=True, blank=True, related_name='maintenance_list'
     )
-    CONDITION_VERY_GOOD = 'very_good'
-    CONDITION_FAIRLY_GOOD = 'fairly_good'
-    CONDITION_VERY_POOR = 'very_poor'
+    CONDITION_GOOD = 'good'
+    CONDITION_FAIR = 'fair'
+    CONDITION_POOR = 'poor'
     CONDITION_CHOICES = [
-        (CONDITION_VERY_GOOD, 'In very good condition, no intervention required'),
-        (CONDITION_FAIRLY_GOOD, 'In fairly good condition, minor intervention required'),
-        (CONDITION_VERY_POOR, 'In very poor condition, major intervention required'),
+        (CONDITION_GOOD, 'Good'),
+        (CONDITION_FAIR, 'Fair'),
+        (CONDITION_POOR, 'Poor'),
     ]
 
     instructions = models.TextField()
@@ -547,8 +589,11 @@ class WorkOrder(models.Model):
 
     def clean(self):
         super().clean()
-        if self.assigned_technician_id and self.assigned_technician.role_id and self.assigned_technician.role.name != Role.TECHNICIAN:
-            raise ValidationError({'assigned_technician': 'Assigned technician must have the Technician role.'})
+        if (
+            self.assigned_technician_id and self.assigned_technician.role_id
+            and self.assigned_technician.role.name not in Role.FIELD_ROLES
+        ):
+            raise ValidationError({'assigned_technician': 'Assigned person must be Field Team or a Team Lead.'})
 
     @property
     def target(self):
@@ -565,6 +610,15 @@ class PartUsage(models.Model):
     part = models.ForeignKey(Part, on_delete=models.PROTECT, related_name='usages')
     qty_used = models.PositiveIntegerField()
     notes = models.TextField(blank=True)
+    # Required for new logs (enforced by the API); blank only on logs made before photos existed.
+    photo = models.ImageField(upload_to='part_usages/%Y/%m/', blank=True)
+    photo_taken_at = models.DateTimeField(null=True, blank=True)
+    # Identifier of the physical part used (e.g. a serial number). Left blank for now.
+    part_identifier = models.CharField('Part ID', max_length=100, blank=True)
+    # The team whose stock this usage drew from (the logging person's team at the time).
+    cluster_team = models.ForeignKey(
+        ClusterTeam, on_delete=models.SET_NULL, null=True, blank=True, related_name='part_usages',
+    )
     recorded_by = models.ForeignKey(
         'Personnel', on_delete=models.SET_NULL, null=True, blank=True, related_name='part_usages'
     )
@@ -574,6 +628,10 @@ class PartUsage(models.Model):
     class Meta:
         ordering = ['-created']
         verbose_name_plural = 'part usages'
+
+    @property
+    def base_station(self):
+        return self.work_order.base_station
 
     def __str__(self):
         return f"{self.qty_used}x {self.part} on {self.asset}"
@@ -657,20 +715,104 @@ class MeterReading(models.Model):
 
 
 class PartStock(models.Model):
+    """Stock of one part in one place: a regional store, or a cluster team (held by its Team Lead).
+
+    `qty` is only ever changed through assets.stock, which writes a StockMovement in the same
+    transaction, so the movement log always explains the number.
+    """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     part = models.ForeignKey(Part, on_delete=models.PROTECT, related_name='stock')
-    cluster_group = models.ForeignKey(ClusterGroup, on_delete=models.PROTECT, related_name='part_stocks')
+    region = models.ForeignKey(
+        Region, on_delete=models.PROTECT, null=True, blank=True, related_name='part_stocks',
+    )
+    cluster_team = models.ForeignKey(
+        ClusterTeam, on_delete=models.PROTECT, null=True, blank=True, related_name='part_stocks',
+    )
     qty = models.PositiveIntegerField(default=0)
     reorder_threshold = models.PositiveIntegerField(default=0)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [('part', 'cluster_group')]
         verbose_name_plural = 'part stocks'
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(region_id__isnull=False, cluster_team_id__isnull=True) |
+                    Q(region_id__isnull=True, cluster_team_id__isnull=False)
+                ),
+                name='partstock_exactly_one_holder',
+            ),
+            models.UniqueConstraint(
+                fields=['part', 'region'], condition=Q(region__isnull=False),
+                name='partstock_one_row_per_part_per_region',
+            ),
+            models.UniqueConstraint(
+                fields=['part', 'cluster_team'], condition=Q(cluster_team__isnull=False),
+                name='partstock_one_row_per_part_per_team',
+            ),
+        ]
+
+    @property
+    def holder(self):
+        return self.region or self.cluster_team
 
     def __str__(self):
-        return f"{self.part} stock at {self.cluster_group}"
+        where = f"{self.region} regional store" if self.region_id else f"team {self.cluster_team}"
+        return f"{self.part} at {where}"
+
+
+class StockMovement(models.Model):
+    """One change to one stock record. A delivery writes two: regional store down, team up."""
+    REASON_DELIVERY = 'delivery'
+    REASON_USAGE = 'usage'
+    REASON_ADDED_AT_SITE = 'added_at_site'
+    REASON_ADJUSTMENT = 'adjustment'
+    REASON_CHOICES = [
+        (REASON_DELIVERY, 'Delivery'),
+        (REASON_USAGE, 'Usage'),
+        (REASON_ADDED_AT_SITE, 'Added at site'),
+        (REASON_ADJUSTMENT, 'Adjustment'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    part = models.ForeignKey(Part, on_delete=models.PROTECT, related_name='stock_movements')
+    region = models.ForeignKey(
+        Region, on_delete=models.PROTECT, null=True, blank=True, related_name='stock_movements',
+    )
+    cluster_team = models.ForeignKey(
+        ClusterTeam, on_delete=models.PROTECT, null=True, blank=True, related_name='stock_movements',
+    )
+    change = models.IntegerField(help_text='Positive adds stock, negative removes it.')
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES)
+    delivery = models.ForeignKey(
+        'PartDelivery', on_delete=models.PROTECT, null=True, blank=True, related_name='stock_movements',
+    )
+    usage = models.ForeignKey(
+        'PartUsage', on_delete=models.PROTECT, null=True, blank=True, related_name='stock_movements',
+    )
+    note = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        'Personnel', on_delete=models.SET_NULL, null=True, blank=True, related_name='stock_movements',
+    )
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created']
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    Q(region_id__isnull=False, cluster_team_id__isnull=True) |
+                    Q(region_id__isnull=True, cluster_team_id__isnull=False)
+                ),
+                name='stockmovement_exactly_one_holder',
+            ),
+            models.CheckConstraint(condition=~Q(change=0), name='stockmovement_change_not_zero'),
+        ]
+
+    def __str__(self):
+        where = self.region or self.cluster_team
+        return f"{self.change:+d} {self.part} at {where} ({self.get_reason_display()})"
 
 
 class Alarm(models.Model):
@@ -798,15 +940,8 @@ class DieselDelivery(models.Model):
 
 
 class PartRequest(models.Model):
-    STATUS_REQUESTED = 'requested'
-    STATUS_RECEIVED = 'received'
-    STATUS_CHOICES = [
-        (STATUS_REQUESTED, 'Requested'),
-        (STATUS_RECEIVED, 'Received'),
-    ]
-
+    """A Field Team request for parts for one base station. The parts are its lines."""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    part = models.ForeignKey(Part, on_delete=models.PROTECT, related_name='requests')
     base_station = models.ForeignKey(BaseStation, on_delete=models.PROTECT, related_name='part_requests')
     work_order = models.ForeignKey(
         WorkOrder, on_delete=models.SET_NULL, null=True, blank=True, related_name='part_requests'
@@ -814,14 +949,18 @@ class PartRequest(models.Model):
     asset = models.ForeignKey(
         Asset, on_delete=models.SET_NULL, null=True, blank=True, related_name='part_requests'
     )
-    quantity = models.PositiveIntegerField()
-    reason = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
+    notes = models.TextField(blank=True)
     requested_by = models.ForeignKey(
         Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='part_requests'
     )
+    # Snapshots taken when the request is made, so later team changes don't rewrite history.
+    cluster_team = models.ForeignKey(
+        ClusterTeam, on_delete=models.SET_NULL, null=True, blank=True, related_name='part_requests',
+    )
+    team_lead = models.ForeignKey(
+        Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='led_part_requests',
+    )
     requested_at = models.DateTimeField(auto_now_add=True)
-    received_at = models.DateTimeField(null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
@@ -829,7 +968,150 @@ class PartRequest(models.Model):
         ordering = ['-requested_at']
 
     def __str__(self):
-        return f"{self.quantity}x {self.part} for {self.base_station} ({self.get_status_display()})"
+        return f"Request for {self.base_station} on {self.requested_at:%Y-%m-%d}"
+
+
+class PartRequestLine(models.Model):
+    """One part on a request, with its own quantity, required date and status."""
+    STATUS_REQUESTED = 'requested'
+    STATUS_APPROVED = 'approved'
+    STATUS_DECLINED = 'declined'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_PENDING = 'pending'
+    STATUS_DELIVERED = 'delivered'
+    STATUS_CHOICES = [
+        (STATUS_REQUESTED, 'Requested'),
+        (STATUS_APPROVED, 'Approved'),
+        (STATUS_DECLINED, 'Declined'),
+        (STATUS_CANCELLED, 'Cancelled'),
+        (STATUS_PENDING, 'Pending'),
+        (STATUS_DELIVERED, 'Delivered'),
+    ]
+    FINAL_STATUSES = (STATUS_DECLINED, STATUS_CANCELLED, STATUS_DELIVERED)
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request = models.ForeignKey(PartRequest, on_delete=models.CASCADE, related_name='lines')
+    part = models.ForeignKey(Part, on_delete=models.PROTECT, related_name='request_lines')
+    quantity = models.PositiveIntegerField()
+    required_date = models.DateField()
+    # True when the required date was already past on the day the request was made.
+    is_backdated = models.BooleanField(default=False)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_REQUESTED)
+    decline_reason = models.TextField(blank=True)
+    decided_by = models.ForeignKey(
+        Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='decided_request_lines',
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    closed_short = models.BooleanField(default=False)
+    closed_short_by = models.ForeignKey(
+        Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='closed_request_lines',
+    )
+    closed_short_at = models.DateTimeField(null=True, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-request__requested_at', 'created']
+        constraints = [
+            models.UniqueConstraint(fields=['request', 'part'], name='partrequestline_one_line_per_part'),
+        ]
+
+    @property
+    def delivered_qty(self):
+        """Total of deliveries both sides have confirmed."""
+        return sum(d.quantity for d in self.deliveries.all() if d.is_complete)
+
+    @property
+    def shortfall(self):
+        return max(self.quantity - self.delivered_qty, 0) if self.closed_short else 0
+
+    def __str__(self):
+        return f"{self.quantity}x {self.part} for {self.request.base_station} ({self.get_status_display()})"
+
+
+class PartDelivery(models.Model):
+    """One delivery against a request line. Complete once both sides have confirmed it:
+    the approver records it (marked delivered) and the Field Team confirms they received it."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    line = models.ForeignKey(PartRequestLine, on_delete=models.CASCADE, related_name='deliveries')
+    quantity = models.PositiveIntegerField()
+    # Usually the regional office's address; left blank until locations are decided.
+    pickup_location = models.CharField(max_length=255, blank=True)
+    marked_delivered_by = models.ForeignKey(
+        Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='marked_deliveries',
+    )
+    marked_delivered_at = models.DateTimeField(null=True, blank=True)
+    received_by = models.ForeignKey(
+        Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='received_deliveries',
+    )
+    # When the Field Team confirmed receipt = the pick-up date.
+    received_at = models.DateTimeField(null=True, blank=True)
+    # Set once the stock has moved from the regional store to the team, so it moves only once.
+    stock_moved = models.BooleanField(default=False)
+    created = models.DateTimeField(auto_now_add=True)
+    updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created']
+        verbose_name_plural = 'part deliveries'
+
+    @property
+    def is_complete(self):
+        return bool(self.marked_delivered_at and self.received_at)
+
+    @property
+    def is_pending(self):
+        return bool(self.marked_delivered_at) != bool(self.received_at)
+
+    def __str__(self):
+        return f"{self.quantity}x {self.line.part} delivery"
+
+
+class Notification(models.Model):
+    """An in-app alert for one person."""
+    EVENT_NEW_REQUEST = 'new_request'
+    EVENT_REQUEST_CANCELLED = 'request_cancelled'
+    EVENT_LINE_APPROVED = 'line_approved'
+    EVENT_LINE_DECLINED = 'line_declined'
+    EVENT_DELIVERY_RECORDED = 'delivery_recorded'
+    EVENT_DELIVERY_RECEIVED = 'delivery_received'
+    EVENT_ADDED_AT_SITE = 'added_at_site'
+    EVENT_LOW_STOCK = 'low_stock'
+    EVENT_CHOICES = [
+        (EVENT_NEW_REQUEST, 'New request'),
+        (EVENT_REQUEST_CANCELLED, 'Request cancelled'),
+        (EVENT_LINE_APPROVED, 'Part approved'),
+        (EVENT_LINE_DECLINED, 'Part declined'),
+        (EVENT_DELIVERY_RECORDED, 'Delivery recorded'),
+        (EVENT_DELIVERY_RECEIVED, 'Delivery received'),
+        (EVENT_ADDED_AT_SITE, 'Stock added at site'),
+        (EVENT_LOW_STOCK, 'Stock below reorder level'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(Personnel, on_delete=models.CASCADE, related_name='notifications')
+    event = models.CharField(max_length=30, choices=EVENT_CHOICES)
+    message = models.TextField()
+    part_request = models.ForeignKey(
+        PartRequest, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications',
+    )
+    part_request_line = models.ForeignKey(
+        PartRequestLine, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications',
+    )
+    part_delivery = models.ForeignKey(
+        PartDelivery, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications',
+    )
+    part_usage = models.ForeignKey(
+        PartUsage, on_delete=models.CASCADE, null=True, blank=True, related_name='notifications',
+    )
+    read_at = models.DateTimeField(null=True, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created']
+
+    def __str__(self):
+        return f"{self.get_event_display()} for {self.recipient}"
 
 
 class SafetyReport(models.Model):

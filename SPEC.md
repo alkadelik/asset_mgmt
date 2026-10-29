@@ -12,6 +12,7 @@ A technician-facing mobile CMMS (computerized maintenance management system) for
 **Core actors:**
 - **Technician** — field worker assigned to a set of base stations. Primary mobile app user.
 - **Regional Manager** — oversees stations and PM schedules. Primarily admin-facing, not the main mobile user.
+- **Cluster Manager** — oversees the base stations and staff in a cluster. Uses the mobile app with a menu of extra spaces (maintenance reports, consumables and spare parts, diesel delivery, petty cash).
 
 ---
 

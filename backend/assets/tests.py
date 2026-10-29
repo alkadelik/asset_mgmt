@@ -3,25 +3,39 @@ import shutil
 import tempfile
 import uuid
 
-from django.test import override_settings
+import datetime
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from .models import (
     Alarm, AlarmNote, Asset, AssetCategory, AssetCheckList, BaseStation,
     Cluster, ClusterGroup, Condition, DieselDelivery, InspectionResponse,
-    Issue, Location, MeterReading, Part, PartRequest, PartUsage, PMQuestion,
-    Personnel, Region, Role, SafetyReport, Vendor, WorkOrder,
-    WorkOrderChecklistResponse,
+    Issue, Location, MeterReading, Notification, Part, PartDelivery, PartRequest, PartRequestLine,
+    PartStock, PartUsage, PMQuestion, Personnel, Region, Role, SafetyReport, StockMovement, Vendor,
+    WorkOrder, WorkOrderChecklistResponse, ClusterTeam,
 )
+from . import parts as parts_rules
+
+
+def make_jpeg(name='part.jpg', fmt='JPEG', size=(64, 48)):
+    buffer = io.BytesIO()
+    Image.new('RGB', size, (120, 80, 40)).save(buffer, format=fmt)
+    content_type = 'image/jpeg' if fmt == 'JPEG' else 'image/png'
+    return SimpleUploadedFile(name, buffer.getvalue(), content_type=content_type)
 
 
 class TechnicianAPITestCase(APITestCase):
     """Base fixture: one technician assigned to one base station with one asset."""
 
     def setUp(self):
-        role_tech = Role.objects.create(name=Role.TECHNICIAN)
+        role_tech = Role.objects.get_or_create(name=Role.FIELD_TEAM)[0]
         region = Region.objects.create(name="Test Region")
         cluster_group = ClusterGroup.objects.create(region=region, name="Test Cluster Group")
         cluster = Cluster.objects.create(cluster_group=cluster_group, name="Test Cluster")
@@ -188,92 +202,309 @@ class DieselDeliveryTests(TechnicianAPITestCase):
         self.assertEqual(MeterReading.objects.count(), 0)
 
 
-class PartRequestTests(TechnicianAPITestCase):
+class PartsFixtureMixin:
+    """A cluster team (with the base fixture's technician in it), a Team Lead, a Cluster Manager
+    and a Regional Manager, plus two parts with regional store stock."""
+
     def setUp(self):
         super().setUp()
+        self.cluster = self.station.cluster
+        self.region = self.cluster.cluster_group.region
+        self.team = ClusterTeam.objects.create(name="Team A", cluster=self.cluster)
+        self.tech.cluster_team = self.team
+        self.tech.save()
+        self.lead = Personnel.objects.create_user(
+            username="lead1", password="pass1234", cluster_team=self.team,
+            role=Role.objects.get_or_create(name=Role.TEAM_LEAD)[0],
+        )
+        self.cluster_manager = Personnel.objects.create_user(
+            username="cm1", password="pass1234", cluster=self.cluster,
+            role=Role.objects.get_or_create(name=Role.CLUSTER_MANAGER)[0],
+        )
+        from .models import Station
+        regional_office = Station.objects.create(type=Station.TYPE_REGION, region=self.region, address="1 Region Rd")
+        self.regional_manager = Personnel.objects.create_user(
+            username="rm1", password="pass1234", station=regional_office,
+            role=Role.objects.get_or_create(name=Role.REGIONAL_MANAGER)[0],
+        )
         self.vendor = Vendor.objects.create(name="Parts Co", type=Vendor.TYPE_SUPPLIER)
-        self.part = Part.objects.create(vendor=self.vendor, name="Oil Filter", sku="OF-1", unit_cost="10.00")
+        self.part = Part.objects.create(
+            vendor=self.vendor, name="Oil Filter", sku="OF-1", unit_cost="10.00", kind=Part.KIND_CONSUMABLE,
+        )
+        self.part2 = Part.objects.create(vendor=self.vendor, name="Fan Belt", sku="FB-1", unit_cost="20.00")
+        parts_rules.adjust_stock(self.part, 10, region=self.region, note="Opening stock")
+        parts_rules.adjust_stock(self.part2, 4, region=self.region, note="Opening stock")
+        self.work_order = WorkOrder.objects.create(base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE)
 
-    def test_create_request(self):
-        response = self.client.post('/api/part-requests/', {
-            'part': str(self.part.id),
+    def stock(self, part, region=None, team=None):
+        lookup = {'region': region} if region else {'cluster_team': team}
+        return PartStock.objects.filter(part=part, **lookup).values_list('qty', flat=True).first() or 0
+
+    def make_request(self, lines=None, **extra):
+        payload = {
             'base_station': str(self.station.id),
-            'quantity': 3,
-            'reason': 'Due for replacement',
-        })
+            'lines': lines or [{'part': str(self.part.id), 'quantity': 3, 'required_date': '2099-01-10'}],
+            **extra,
+        }
+        return self.client.post('/api/part-requests/', payload, format='json')
+
+    def approved_line(self, quantity=3, part=None):
+        resp = self.make_request([{'part': str((part or self.part).id), 'quantity': quantity,
+                                   'required_date': '2099-01-10'}])
+        line = PartRequestLine.objects.get(pk=resp.data['lines'][0]['id'])
+        parts_rules.approve_line(line, by=self.regional_manager)
+        line.refresh_from_db()
+        return line
+
+
+class PartRequestTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def test_create_request_with_several_lines(self):
+        response = self.make_request([
+            {'part': str(self.part.id), 'quantity': 3, 'required_date': '2099-01-10'},
+            {'part': str(self.part2.id), 'quantity': 1, 'required_date': '2099-01-12'},
+        ], notes='Due for replacement')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        pr = PartRequest.objects.get()
-        self.assertEqual(pr.status, PartRequest.STATUS_REQUESTED)
-        self.assertEqual(pr.requested_by, self.tech)
+        req = PartRequest.objects.get()
+        self.assertEqual(req.requested_by, self.tech)
+        self.assertEqual(req.cluster_team, self.team)
+        self.assertEqual(req.team_lead, self.lead)
+        self.assertEqual(req.lines.count(), 2)
+        self.assertEqual(set(req.lines.values_list('status', flat=True)), {PartRequestLine.STATUS_REQUESTED})
+        self.assertEqual(response.data['team_lead']['name'], 'lead1')
 
-    def test_receive_marks_received(self):
-        pr = PartRequest.objects.create(
-            part=self.part, base_station=self.station, quantity=1, requested_by=self.tech,
-        )
-        response = self.client.post(f'/api/part-requests/{pr.id}/receive/')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        pr.refresh_from_db()
-        self.assertEqual(pr.status, PartRequest.STATUS_RECEIVED)
-        self.assertIsNotNone(pr.received_at)
+    def test_backdated_line_is_flagged_but_allowed(self):
+        yesterday = (timezone.localdate() - datetime.timedelta(days=1)).isoformat()
+        response = self.make_request([{'part': str(self.part.id), 'quantity': 1, 'required_date': yesterday}])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(response.data['lines'][0]['is_backdated'])
 
-    def test_receive_twice_rejected(self):
-        pr = PartRequest.objects.create(
-            part=self.part, base_station=self.station, quantity=1, requested_by=self.tech,
-            status=PartRequest.STATUS_RECEIVED, received_at=timezone.now(),
-        )
-        response = self.client.post(f'/api/part-requests/{pr.id}/receive/')
+    def test_same_part_twice_rejected(self):
+        line = {'part': str(self.part.id), 'quantity': 1, 'required_date': '2099-01-10'}
+        response = self.make_request([line, line])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(PartRequest.objects.count(), 0)
+
+    def test_bad_line_rejects_whole_request(self):
+        response = self.make_request([
+            {'part': str(self.part.id), 'quantity': 1, 'required_date': '2099-01-10'},
+            {'part': str(self.part2.id), 'quantity': 0, 'required_date': '2099-01-10'},
+        ])
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(PartRequest.objects.count(), 0)
+
+    def test_requester_must_be_in_a_team(self):
+        self.tech.cluster_team = None
+        self.tech.save()
+        response = self.make_request()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_new_request_notifies_cluster_and_regional_managers(self):
+        self.make_request()
+        recipients = set(Notification.objects.filter(event=Notification.EVENT_NEW_REQUEST)
+                         .values_list('recipient__username', flat=True))
+        self.assertEqual(recipients, {'cm1', 'rm1'})
+
     def test_list_only_own_requests(self):
-        other_tech = Personnel.objects.create_user(username="tech2", password="pass1234")
-        PartRequest.objects.create(
-            part=self.part, base_station=self.station, quantity=1, requested_by=other_tech,
-        )
+        self.make_request()
+        other = Personnel.objects.create_user(username="tech2", password="pass1234", cluster_team=self.team)
+        self.client.force_authenticate(user=other)
         response = self.client.get('/api/part-requests/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 0)
 
+    def test_cancel_while_all_requested(self):
+        req_id = self.make_request().data['id']
+        response = self.client.post(f'/api/part-requests/{req_id}/cancel/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['lines'][0]['status'], PartRequestLine.STATUS_CANCELLED)
 
-class PartUsageTests(TechnicianAPITestCase):
-    def setUp(self):
-        super().setUp()
-        self.vendor = Vendor.objects.create(name="Parts Co", type=Vendor.TYPE_SUPPLIER)
-        self.part = Part.objects.create(vendor=self.vendor, name="Oil Filter", sku="OF-1", unit_cost="10.00")
-        self.work_order = WorkOrder.objects.create(base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE)
+    def test_cancel_refused_once_a_line_is_decided(self):
+        line = self.approved_line()
+        response = self.client.post(f'/api/part-requests/{line.request_id}/cancel/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_log_usage(self):
-        response = self.client.post('/api/part-usages/', {
-            'work_order': str(self.work_order.id),
-            'asset': str(self.asset.id),
-            'part': str(self.part.id),
-            'qty_used': 1,
-            'notes': 'Old filter was clogged.',
-        })
+
+class RequestLifecycleTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def test_decline_needs_reason_and_notifies(self):
+        resp = self.make_request()
+        line = PartRequestLine.objects.get(pk=resp.data['lines'][0]['id'])
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.decline_line(line, by=self.regional_manager, reason='  ')
+        parts_rules.decline_line(line, by=self.regional_manager, reason='Not on the approved list')
+        line.refresh_from_db()
+        self.assertEqual(line.status, PartRequestLine.STATUS_DECLINED)
+        self.assertEqual(
+            set(Notification.objects.filter(event=Notification.EVENT_LINE_DECLINED)
+                .values_list('recipient__username', flat=True)),
+            {'tech1', 'lead1'},
+        )
+
+    def test_delivery_then_receipt_moves_stock_and_completes(self):
+        line = self.approved_line(quantity=3)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=3)
+        line.refresh_from_db()
+        self.assertEqual(line.status, PartRequestLine.STATUS_PENDING)
+        self.assertEqual(self.stock(self.part, region=self.region), 10)  # nothing moves until both confirm
+
+        response = self.client.post(f'/api/part-deliveries/{delivery.id}/confirm-received/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['lines'][0]['status'], PartRequestLine.STATUS_DELIVERED)
+        self.assertEqual(self.stock(self.part, region=self.region), 7)
+        self.assertEqual(self.stock(self.part, team=self.team), 3)
+        self.assertEqual(StockMovement.objects.filter(delivery=delivery).count(), 2)
+        self.assertIsNotNone(response.data['lines'][0]['deliveries'][0]['received_at'])
+
+    def test_receipt_first_then_marked_delivered(self):
+        line = self.approved_line(quantity=2)
+        response = self.client.post(f'/api/part-request-lines/{line.id}/receipts/', {'quantity': 2})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        line.refresh_from_db()
+        self.assertEqual(line.status, PartRequestLine.STATUS_PENDING)
+        delivery = line.deliveries.get()
+        parts_rules.mark_delivered(delivery, by=self.regional_manager)
+        line.refresh_from_db()
+        self.assertEqual(line.status, PartRequestLine.STATUS_DELIVERED)
+        self.assertEqual(self.stock(self.part, team=self.team), 2)
+
+    def test_partial_delivery_returns_line_to_approved(self):
+        line = self.approved_line(quantity=3)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=2)
+        parts_rules.confirm_received(delivery, by=self.tech)
+        line.refresh_from_db()
+        self.assertEqual(line.status, PartRequestLine.STATUS_APPROVED)
+        self.assertEqual(line.delivered_qty, 2)
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.record_delivery(line, by=self.regional_manager, quantity=2)  # only 1 outstanding
+
+    def test_close_short(self):
+        line = self.approved_line(quantity=3)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=2)
+        parts_rules.confirm_received(delivery, by=self.tech)
+        parts_rules.close_short(line, by=self.regional_manager)
+        line.refresh_from_db()
+        self.assertEqual(line.status, PartRequestLine.STATUS_DELIVERED)
+        self.assertTrue(line.closed_short)
+        self.assertEqual(line.shortfall, 1)
+
+    def test_close_short_refused_with_nothing_delivered(self):
+        line = self.approved_line(quantity=3)
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.close_short(line, by=self.regional_manager)
+
+    def test_delivery_cannot_exceed_regional_store(self):
+        line = self.approved_line(quantity=5, part=self.part2)  # store holds 4
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.record_delivery(line, by=self.regional_manager, quantity=5)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=4)
+        self.assertEqual(delivery.quantity, 4)
+
+    def test_promised_stock_is_held_for_pending_deliveries(self):
+        first = self.approved_line(quantity=3, part=self.part2)
+        parts_rules.record_delivery(first, by=self.regional_manager, quantity=3)
+        self.make_request([{'part': str(self.part2.id), 'quantity': 2, 'required_date': '2099-02-01'}])
+        second = PartRequestLine.objects.filter(part=self.part2, status=PartRequestLine.STATUS_REQUESTED).get()
+        parts_rules.approve_line(second, by=self.regional_manager)
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.record_delivery(second, by=self.regional_manager, quantity=2)  # 4 held, 3 promised
+
+    def test_cannot_deliver_unapproved_line(self):
+        resp = self.make_request()
+        line = PartRequestLine.objects.get(pk=resp.data['lines'][0]['id'])
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.record_delivery(line, by=self.regional_manager, quantity=1)
+
+    def test_confirm_twice_rejected(self):
+        line = self.approved_line(quantity=1)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=1)
+        self.client.post(f'/api/part-deliveries/{delivery.id}/confirm-received/')
+        response = self.client.post(f'/api/part-deliveries/{delivery.id}/confirm-received/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(self.stock(self.part, team=self.team), 1)
+
+    def test_one_team_lead_per_team(self):
+        from django.core.exceptions import ValidationError
+        second = Personnel(username="lead2", cluster_team=self.team,
+                           role=Role.objects.get(name=Role.TEAM_LEAD))
+        with self.assertRaises(ValidationError):
+            second.clean()
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PartUsageTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def post_usage(self, qty=1, photo=True, **extra):
+        payload = {
+            'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+            'part': str(self.part.id), 'qty_used': qty, **extra,
+        }
+        if photo:
+            payload['photo'] = make_jpeg() if photo is True else photo
+        return self.client.post('/api/part-usages/', payload, format='multipart')
+
+    def test_log_usage_with_photo_takes_team_stock(self):
+        parts_rules.adjust_stock(self.part, 3, team=self.team, note='Count')
+        response = self.post_usage(qty=2, notes='Old filter was clogged.', part_identifier='')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         usage = PartUsage.objects.get()
         self.assertEqual(usage.recorded_by, self.tech)
-        self.assertEqual(usage.asset, self.asset)
+        self.assertEqual(usage.cluster_team, self.team)
+        self.assertTrue(usage.photo.name.endswith(f'{usage.id}.jpg'))
+        self.assertIn('/media/part_usages/', response.data['photo_url'])
+        self.assertEqual(self.stock(self.part, team=self.team), 1)
+        self.assertFalse(Notification.objects.filter(event=Notification.EVENT_ADDED_AT_SITE).exists())
+
+    def test_shortfall_is_added_at_site(self):
+        parts_rules.adjust_stock(self.part, 1, team=self.team, note='Count')
+        self.post_usage(qty=3)
+        self.assertEqual(self.stock(self.part, team=self.team), 0)
+        added = StockMovement.objects.get(reason=StockMovement.REASON_ADDED_AT_SITE)
+        self.assertEqual(added.change, 2)
+        self.assertEqual(
+            set(Notification.objects.filter(event=Notification.EVENT_ADDED_AT_SITE)
+                .values_list('recipient__username', flat=True)),
+            {'cm1', 'rm1'},
+        )
+
+    def test_photo_required(self):
+        response = self.post_usage(photo=False)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(PartUsage.objects.count(), 0)
+
+    @override_settings(PART_USAGE_PHOTO_REQUIRED=False)
+    def test_photo_requirement_can_be_switched_off(self):
+        response = self.post_usage(photo=False)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_non_jpeg_rejected(self):
+        response = self.post_usage(photo=make_jpeg('part.png', fmt='PNG'))
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @override_settings(PART_USAGE_PHOTO_MAX_BYTES=100)
+    def test_oversized_photo_rejected(self):
+        response = self.post_usage()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_missing_fields_rejected(self):
         response = self.client.post('/api/part-usages/', {'work_order': str(self.work_order.id)})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_person_in_no_team_moves_no_stock(self):
+        self.tech.cluster_team = None
+        self.tech.save()
+        response = self.post_usage()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(StockMovement.objects.filter(usage__isnull=False).exists())
+
     def test_list_scoped_to_technician_stations(self):
-        PartUsage.objects.create(
-            work_order=self.work_order, asset=self.asset, part=self.part, qty_used=2,
-        )
+        PartUsage.objects.create(work_order=self.work_order, asset=self.asset, part=self.part, qty_used=2)
         response = self.client.get('/api/part-usages/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
 
     def test_list_filtered_by_asset(self):
-        other_asset = Asset.objects.create(
-            asset_category=self.category, location=self.location, name="Second asset",
-        )
+        other_asset = Asset.objects.create(asset_category=self.category, location=self.location, name="Second asset")
         PartUsage.objects.create(work_order=self.work_order, asset=self.asset, part=self.part, qty_used=1)
         PartUsage.objects.create(work_order=self.work_order, asset=other_asset, part=self.part, qty_used=1)
         response = self.client.get(f'/api/part-usages/?asset={self.asset.id}')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
         self.assertEqual(response.data[0]['asset']['id'], str(self.asset.id))
 
@@ -282,8 +513,142 @@ class PartUsageTests(TechnicianAPITestCase):
         PartUsage.objects.create(work_order=self.work_order, asset=self.asset, part=self.part, qty_used=1)
         PartUsage.objects.create(work_order=other_wo, asset=self.asset, part=self.part, qty_used=1)
         response = self.client.get(f'/api/part-usages/?work_order={self.work_order.id}')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 1)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class ManagerListTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def setUp(self):
+        super().setUp()
+        other_cluster = Cluster.objects.create(cluster_group=self.cluster.cluster_group, name="Elsewhere")
+        self.other_station = BaseStation.objects.create(
+            cluster=other_cluster, name="Far Station", address="x", site_id="FAR-1",
+            site_classification=BaseStation.CLASS_PLATINUM,
+        )
+
+    def test_requests_list_is_one_row_per_line_in_my_cluster(self):
+        self.make_request([
+            {'part': str(self.part.id), 'quantity': 3, 'required_date': '2099-01-10'},
+            {'part': str(self.part2.id), 'quantity': 1, 'required_date': '2099-01-12'},
+        ])
+        self.client.post('/api/part-requests/', {
+            'base_station': str(self.other_station.id),
+            'lines': [{'part': str(self.part.id), 'quantity': 1, 'required_date': '2099-01-10'}],
+        }, format='json')
+        self.client.force_authenticate(user=self.cluster_manager)
+        response = self.client.get('/api/manager/part-requests/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 2)
+        row = response.data[0]
+        for key in ('requested_date', 'part', 'base_station', 'requested_by', 'required_date', 'team_lead',
+                    'quantity', 'status', 'pickup_location', 'pickup_date'):
+            self.assertIn(key, row)
+        self.assertEqual(row['base_station']['site_id'], 'TST-001')
+
+    def test_requests_list_filters(self):
+        self.make_request([
+            {'part': str(self.part.id), 'quantity': 3, 'required_date': '2099-01-10'},
+            {'part': str(self.part2.id), 'quantity': 1, 'required_date': '2099-01-12'},
+        ])
+        self.client.force_authenticate(user=self.cluster_manager)
+        self.assertEqual(len(self.client.get(f'/api/manager/part-requests/?part={self.part2.id}').data), 1)
+        self.assertEqual(len(self.client.get('/api/manager/part-requests/?status=approved').data), 0)
+
+    def test_pickup_date_comes_from_receipt(self):
+        line = self.approved_line(quantity=1)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=1)
+        parts_rules.confirm_received(delivery, by=self.tech)
+        self.client.force_authenticate(user=self.cluster_manager)
+        row = self.client.get('/api/manager/part-requests/').data[0]
+        self.assertIsNotNone(row['pickup_date'])
+        self.assertEqual(row['delivered_qty'], 1)
+
+    def test_usage_list_scoped_to_my_cluster(self):
+        self.client.post('/api/part-usages/', {
+            'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+            'part': str(self.part.id), 'qty_used': 1, 'photo': make_jpeg(),
+        }, format='multipart')
+        far_wo = WorkOrder.objects.create(base_station=self.other_station, type=WorkOrder.TYPE_PREVENTIVE)
+        PartUsage.objects.create(work_order=far_wo, asset=self.asset, part=self.part, qty_used=1)
+        self.client.force_authenticate(user=self.cluster_manager)
+        response = self.client.get('/api/manager/part-usages/')
+        self.assertEqual(len(response.data), 1)
+        row = response.data[0]
+        self.assertEqual(row['recorded_by']['name'], 'tech1')
+        self.assertIsNotNone(row['photo_url'])
+        self.assertIn('part_identifier', row)
+
+    def test_manager_without_cluster_sees_nothing(self):
+        self.make_request()
+        self.cluster_manager.cluster = None
+        self.cluster_manager.save()
+        self.client.force_authenticate(user=self.cluster_manager)
+        self.assertEqual(self.client.get('/api/manager/part-requests/').data, [])
+
+    def test_stock_by_team_and_cluster_total(self):
+        team_b = ClusterTeam.objects.create(name="Team B", cluster=self.cluster)
+        parts_rules.adjust_stock(self.part, 2, team=self.team, note='Count')
+        parts_rules.adjust_stock(self.part, 5, team=team_b, note='Count')
+        self.client.force_authenticate(user=self.cluster_manager)
+        response = self.client.get('/api/manager/stock/')
+        self.assertEqual(len(response.data['teams']), 2)
+        self.assertEqual(response.data['totals'][0]['qty'], 7)
+
+    def test_team_stock_for_field_team(self):
+        parts_rules.adjust_stock(self.part, 2, team=self.team, note='Count')
+        response = self.client.get('/api/team-stock/')
+        self.assertEqual(response.data['cluster_team']['name'], 'Team A')
+        self.assertEqual(response.data['items'][0]['qty'], 2)
+
+
+class StockRuleTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def test_adjustment_needs_reason(self):
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.adjust_stock(self.part, 1, region=self.region, note='')
+
+    def test_cannot_go_below_zero(self):
+        with self.assertRaises(parts_rules.PartsError):
+            parts_rules.adjust_stock(self.part, -11, region=self.region, note='Write-off')
+        self.assertEqual(self.stock(self.part, region=self.region), 10)
+
+    def test_every_change_is_logged(self):
+        parts_rules.adjust_stock(self.part, -3, region=self.region, note='Write-off')
+        total = sum(StockMovement.objects.filter(part=self.part, region=self.region).values_list('change', flat=True))
+        self.assertEqual(total, self.stock(self.part, region=self.region))
+
+    def test_low_stock_alerts_regional_manager(self):
+        PartStock.objects.filter(part=self.part, region=self.region).update(reorder_threshold=8)
+        parts_rules.adjust_stock(self.part, -3, region=self.region, note='Write-off')
+        self.assertTrue(Notification.objects.filter(
+            event=Notification.EVENT_LOW_STOCK, recipient=self.regional_manager).exists())
+
+
+class NotificationTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def test_list_and_mark_read(self):
+        line = self.approved_line()
+        response = self.client.get('/api/notifications/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['unread'], 1)
+        note_id = response.data['results'][0]['id']
+        self.assertEqual(response.data['results'][0]['event'], Notification.EVENT_LINE_APPROVED)
+        self.client.post(f'/api/notifications/{note_id}/read/')
+        self.assertEqual(self.client.get('/api/notifications/').data['unread'], 0)
+        self.assertIsNotNone(line)
+
+    def test_cannot_read_someone_elses(self):
+        note = Notification.objects.create(recipient=self.cluster_manager, event=Notification.EVENT_NEW_REQUEST,
+                                           message='x')
+        response = self.client.post(f'/api/notifications/{note.id}/read/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class MeReportsTeamAndClusterTests(PartsFixtureMixin, TechnicianAPITestCase):
+    def test_me_includes_team_and_cluster(self):
+        self.assertEqual(self.client.get('/api/auth/me/').data['cluster_team']['name'], 'Team A')
+        self.client.force_authenticate(user=self.cluster_manager)
+        data = self.client.get('/api/auth/me/').data
+        self.assertEqual(data['role'], 'cluster_manager')
+        self.assertEqual(data['cluster']['id'], str(self.cluster.id))
 
 
 class SafetyReportTests(TechnicianAPITestCase):
@@ -372,7 +737,7 @@ class AttachmentUploadTests(TechnicianAPITestCase):
 
 class AuthTests(APITestCase):
     def setUp(self):
-        role_tech = Role.objects.create(name=Role.TECHNICIAN)
+        role_tech = Role.objects.get_or_create(name=Role.FIELD_TEAM)[0]
         self.tech = Personnel.objects.create_user(username="tech1", password="pass1234")
         self.tech.role = role_tech
         self.tech.save()
@@ -941,23 +1306,35 @@ class OfflineSyncTests(TechnicianAPITestCase):
         )
 
     def test_part_request_replay_is_idempotent(self):
+        self.tech.cluster_team = ClusterTeam.objects.create(name="Team A", cluster=self.station.cluster)
+        self.tech.save()
         client_id = str(uuid.uuid4())
-        payload = {'id': client_id, 'part': str(self.part.id), 'base_station': str(self.station.id), 'quantity': 2}
-        first = self.client.post('/api/part-requests/', payload)
-        second = self.client.post('/api/part-requests/', payload)
+        payload = {'id': client_id, 'base_station': str(self.station.id),
+                   'lines': [{'part': str(self.part.id), 'quantity': 2, 'required_date': '2099-01-10'}]}
+        first = self.client.post('/api/part-requests/', payload, format='json')
+        second = self.client.post('/api/part-requests/', payload, format='json')
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
         self.assertEqual(first.data['id'], second.data['id'])
-        self.assertEqual(PartRequest.objects.filter(id=client_id).count(), 1)
+        self.assertEqual(PartRequestLine.objects.filter(request_id=client_id).count(), 1)
 
+    @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
     def test_part_usage_replay_is_idempotent(self):
+        self.tech.cluster_team = ClusterTeam.objects.create(name="Team A", cluster=self.station.cluster)
+        self.tech.save()
         client_id = str(uuid.uuid4())
-        payload = {
-            'id': client_id, 'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
-            'part': str(self.part.id), 'qty_used': 1,
-        }
-        first = self.client.post('/api/part-usages/', payload)
-        second = self.client.post('/api/part-usages/', payload)
+
+        def post():
+            return self.client.post('/api/part-usages/', {
+                'id': client_id, 'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+                'part': str(self.part.id), 'qty_used': 1, 'photo': make_jpeg(),
+            }, format='multipart')
+
+        first, second = post(), post()
         self.assertEqual(first.data['id'], second.data['id'])
         self.assertEqual(PartUsage.objects.filter(id=client_id).count(), 1)
+        # Stock is taken once: one "added at site" and one usage movement.
+        self.assertEqual(StockMovement.objects.filter(usage_id=client_id).count(), 2)
 
     def test_safety_report_replay_is_idempotent(self):
         client_id = str(uuid.uuid4())
@@ -1019,3 +1396,97 @@ class OfflineSyncTests(TechnicianAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.ir.refresh_from_db()
         self.assertEqual(self.ir.comments, 'My edit.')
+
+
+class ClusterManagerRoleTests(APITestCase):
+    def test_cluster_manager_role_exists_and_is_reported_by_me(self):
+        # Migration 0028 creates the role row, so it exists without seeding.
+        role = Role.objects.get(name=Role.CLUSTER_MANAGER)
+        self.assertEqual(str(role), 'Cluster Manager')
+        manager = Personnel.objects.create_user(username='cm1', password='pass1234', role=role)
+        self.client.force_authenticate(user=manager)
+        resp = self.client.get('/api/auth/me/')
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['role'], 'cluster_manager')
+
+
+class ConditionGoodFairPoorTests(APITestCase):
+    def test_choices_are_good_fair_poor(self):
+        self.assertEqual(
+            [label for _, label in AssetCheckList.CONDITION_CHOICES], ['Good', 'Fair', 'Poor']
+        )
+
+    def test_migration_maps_old_values(self):
+        import importlib
+        from django.apps import apps
+        mig = importlib.import_module('assets.migrations.0028_cluster_manager_role_and_good_fair_poor')
+        category = AssetCategory.objects.create(name='Generator')
+        old = {'very_good': 'good', 'fairly_good': 'fair', 'very_poor': 'poor'}
+        rows = {
+            v: AssetCheckList.objects.create(asset_category=category, instructions=v, condition=v)
+            for v in old
+        }
+        mig.forwards(apps, None)
+        for v, row in rows.items():
+            row.refresh_from_db()
+            self.assertEqual(row.condition, old[v])
+        mig.backwards(apps, None)
+        for v, row in rows.items():
+            row.refresh_from_db()
+            self.assertEqual(row.condition, v)
+
+
+class MoveExistingDataMigrationTests(TransactionTestCase):
+    """Migration 0030 moves old single-part requests, cluster-group stock and the technician role."""
+    migrate_from = [('assets', '0029_parts_stock_requests_phase_a')]
+    migrate_to = [('assets', '0030_move_existing_data')]
+
+    def setUp(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old = executor.loader.project_state(self.migrate_from).apps
+        Role = old.get_model('assets', 'Role')
+        Role.objects.filter(name='field_team').delete()
+        Role.objects.get_or_create(name='technician')
+        region = old.get_model('assets', 'Region').objects.create(name='R')
+        cg = old.get_model('assets', 'ClusterGroup').objects.create(region=region, name='CG')
+        cluster = old.get_model('assets', 'Cluster').objects.create(cluster_group=cg, name='C')
+        station = old.get_model('assets', 'BaseStation').objects.create(
+            cluster=cluster, name='S', address='a', site_id='S-1', site_classification='platinum')
+        vendor = old.get_model('assets', 'Vendor').objects.create(name='V', type='supplier')
+        Part = old.get_model('assets', 'Part')
+        part = Part.objects.create(vendor=vendor, name='P', sku='P-1', unit_cost='1.00')
+        PartStock = old.get_model('assets', 'PartStock')
+        cg2 = old.get_model('assets', 'ClusterGroup').objects.create(region=region, name='CG2')
+        PartStock.objects.create(part=part, cluster_group=cg, qty=3)
+        PartStock.objects.create(part=part, cluster_group=cg2, qty=4)
+        PartRequest = old.get_model('assets', 'PartRequest')
+        PartRequest.objects.create(part=part, base_station=station, quantity=2, status='requested')
+        PartRequest.objects.create(part=part, base_station=station, quantity=1, status='received',
+                                   received_at=timezone.now())
+        self.region_id, self.part_id = region.id, part.id
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.apps = executor.loader.project_state(self.migrate_to).apps
+
+    def tearDown(self):
+        MigrationExecutor(connection).migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())
+
+    def test_data_moved(self):
+        Role = self.apps.get_model('assets', 'Role')
+        self.assertTrue(Role.objects.filter(name='field_team').exists())
+        self.assertFalse(Role.objects.filter(name='technician').exists())
+        self.assertTrue(Role.objects.filter(name='team_lead').exists())
+
+        PartStock = self.apps.get_model('assets', 'PartStock')
+        rows = PartStock.objects.filter(part_id=self.part_id)
+        self.assertEqual(rows.count(), 1)
+        self.assertEqual(rows.get().region_id, self.region_id)
+        self.assertEqual(rows.get().qty, 7)
+
+        Line = self.apps.get_model('assets', 'PartRequestLine')
+        self.assertEqual(sorted(Line.objects.values_list('status', flat=True)), ['delivered', 'requested'])
+        delivered = Line.objects.get(status='delivered')
+        Delivery = self.apps.get_model('assets', 'PartDelivery')
+        self.assertEqual(Delivery.objects.get(line=delivered).quantity, 1)

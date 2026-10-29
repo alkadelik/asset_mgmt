@@ -9,18 +9,21 @@ django.setup()
 from django.utils import timezone
 from assets.models import (
     Region, ClusterGroup, Cluster, Client, BaseStation, Location,
-    AssetCategory, Asset, Condition, Role, Personnel,
+    AssetCategory, Asset, Condition, Role, Personnel, ClusterTeam,
     PMCategory, AssetCheckList, PMQuestion,
     WorkOrder, Alarm, AlarmNote, InspectionResponse, WorkOrderChecklistResponse,
-    DieselDelivery, MeterReading, Part, PartRequest, SafetyReport, Vendor,
+    DieselDelivery, MeterReading, Part, PartRequest, PartRequestLine, PartStock, PartUsage,
+    SafetyReport, StockMovement, Vendor,
 )
 
 today = timezone.localdate()
 now = timezone.now()
 
 print("Seeding roles...")
-role_tech, _ = Role.objects.get_or_create(name=Role.TECHNICIAN)
+role_tech, _ = Role.objects.get_or_create(name=Role.FIELD_TEAM)
+role_lead, _ = Role.objects.get_or_create(name=Role.TEAM_LEAD)
 role_rm, _ = Role.objects.get_or_create(name=Role.REGIONAL_MANAGER)
+role_cm, _ = Role.objects.get_or_create(name=Role.CLUSTER_MANAGER)
 
 print("Seeding org hierarchy...")
 region, _ = Region.objects.get_or_create(name="South West")
@@ -388,14 +391,26 @@ janitorial_e, _ = Asset.objects.get_or_create(
     defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-E001"},
 )
 
-print("Seeding technician user...")
+print("Seeding cluster team and Field Team user...")
+team_a, _ = ClusterTeam.objects.get_or_create(name="Lagos Island Team A", defaults={"cluster": cluster})
 tech, created = Personnel.objects.get_or_create(username="tech1")
 if created:
     tech.set_password("tech1pass")
     tech.first_name = "Chidi"
     tech.last_name = "Obi"
 tech.role = role_tech
+tech.cluster_team = team_a
 tech.save()
+
+print("Seeding Cluster Manager user...")
+cluster_manager, created = Personnel.objects.get_or_create(username="cm1")
+if created:
+    cluster_manager.set_password("cm1pass")
+    cluster_manager.first_name = "Bamidele"
+    cluster_manager.last_name = "Adebiyi"
+cluster_manager.role = role_cm
+cluster_manager.cluster = cluster
+cluster_manager.save()
 tech.stations.set([station_a, station_b, station_c, station_d, station_e])
 print(f"  tech1 stations: {list(tech.stations.values_list('site_id', flat=True))}")
 
@@ -512,11 +527,22 @@ part_vendor, _ = Vendor.objects.get_or_create(
     defaults={"type": Vendor.TYPE_SUPPLIER, "phone_number": "08087654321"},
 )
 oil_filter, _ = Part.objects.get_or_create(
-    sku="OF-1001", defaults={"name": "Generator Oil Filter", "vendor": part_vendor, "unit_cost": "3500.00"},
+    sku="OF-1001", defaults={"name": "Generator Oil Filter", "vendor": part_vendor, "unit_cost": "3500.00",
+                             "kind": Part.KIND_CONSUMABLE},
 )
 ac_filter, _ = Part.objects.get_or_create(
-    sku="AF-2002", defaults={"name": "AC Air Filter", "vendor": part_vendor, "unit_cost": "1800.00"},
+    sku="AF-2002", defaults={"name": "AC Air Filter", "vendor": part_vendor, "unit_cost": "1800.00",
+                             "kind": Part.KIND_CONSUMABLE},
 )
+
+print("Seeding regional store stock...")
+for part, qty in ((oil_filter, 20), (ac_filter, 10)):
+    if not PartStock.objects.filter(part=part, region=region).exists():
+        PartStock.objects.create(part=part, region=region, qty=qty, reorder_threshold=5)
+        StockMovement.objects.create(
+            part=part, region=region, change=qty, reason=StockMovement.REASON_ADJUSTMENT,
+            note="Opening stock (seed data).",
+        )
 
 print("Seeding diesel delivery and meter readings...")
 DieselDelivery.objects.get_or_create(
@@ -545,16 +571,16 @@ MeterReading.objects.get_or_create(
 )
 
 print("Seeding part request and usage...")
-PartRequest.objects.get_or_create(
-    part=oil_filter,
+seed_request, _ = PartRequest.objects.get_or_create(
     base_station=station_a,
-    defaults={
-        "work_order": wo_a,
-        "asset": gen_a,
-        "quantity": 2,
-        "reason": "Oil filter due for replacement during PM.",
-        "requested_by": tech,
-    },
+    requested_by=tech,
+    notes="Oil filter due for replacement during PM.",
+    defaults={"work_order": wo_a, "asset": gen_a, "cluster_team": team_a},
+)
+PartRequestLine.objects.get_or_create(
+    request=seed_request,
+    part=oil_filter,
+    defaults={"quantity": 2, "required_date": today + timezone.timedelta(days=3)},
 )
 PartUsage.objects.get_or_create(
     work_order=wo_a,
@@ -588,4 +614,5 @@ print(f"  Diesel deliveries: {DieselDelivery.objects.count()}")
 print(f"  Part requests: {PartRequest.objects.count()}")
 print(f"  Part usages: {PartUsage.objects.count()}")
 print(f"  Safety reports: {SafetyReport.objects.count()}")
-print(f"  Tech user: tech1 / tech1pass")
+print(f"  Field Team user: tech1 / tech1pass (Lagos Island Team A)")
+print(f"  Cluster Manager user: cm1 / cm1pass (Lagos Island)")
