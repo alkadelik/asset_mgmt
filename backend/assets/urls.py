@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from . import report_views, views
 
 urlpatterns = [
     # Auth
@@ -65,6 +65,14 @@ urlpatterns = [
     path('manager/stock/', views.manager_stock),
     path('manager/requests-summary/', views.manager_requests_summary),
     path('manager/usage-summary/', views.manager_usage_summary),
+
+    # Maintenance reports (Cluster Manager)
+    path('reports/overview/', report_views.overview),
+    path('reports/stations/<uuid:pk>/', report_views.station_detail),
+    path('reports/assets/<uuid:pk>/', report_views.asset_detail),
+    path('reports/asset-types/', report_views.asset_types),
+    path('reports/asset-types/<uuid:pk>/grid/', report_views.asset_type_grid),
+    path('reports/staff/', report_views.staff),
 
     # Notifications
     path('notifications/', views.notifications),

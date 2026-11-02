@@ -179,10 +179,11 @@ STATION_ASSETS = {
         ("DC Control Panel", "DC Control Panel D", "DCP-D001"),
         ("Tower Structure", "Tower D", "TWR-D001"),
     ],
-    # A generator but no tank.
+    # Generator and tank always come as a pair.
     "E": [
         ("Janitorial Services", "Site Janitorial — GRA Phase 2 Epsilon", "JAN-E001"),
         ("Diesel Generator", "Generator Set E", "GEN-E001"),
+        ("Diesel Tank", "Diesel Tank E", "TNK-E001"),
         ("AC Control Panel", "AC Control Panel E", "ACP-E001"),
         ("Tower Structure", "Tower E", "TWR-E001"),
     ],
