@@ -63,6 +63,8 @@ urlpatterns = [
     path('manager/part-requests/', views.manager_part_requests),
     path('manager/part-usages/', views.manager_part_usages),
     path('manager/stock/', views.manager_stock),
+    path('manager/requests-summary/', views.manager_requests_summary),
+    path('manager/usage-summary/', views.manager_usage_summary),
 
     # Notifications
     path('notifications/', views.notifications),

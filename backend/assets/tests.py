@@ -1490,3 +1490,137 @@ class MoveExistingDataMigrationTests(TransactionTestCase):
         delivered = Line.objects.get(status='delivered')
         Delivery = self.apps.get_model('assets', 'PartDelivery')
         self.assertEqual(Delivery.objects.get(line=delivered).quantity, 1)
+
+
+class ManagerSummaryTests(PartsFixtureMixin, TechnicianAPITestCase):
+    """The two summary tables on the Cluster Manager's Consumables screens."""
+
+    def setUp(self):
+        super().setUp()
+        other_cluster = Cluster.objects.create(cluster_group=self.cluster.cluster_group, name="Elsewhere")
+        self.other_station = BaseStation.objects.create(
+            cluster=other_cluster, name="Far Station", address="x", site_id="FAR-1",
+            site_classification=BaseStation.CLASS_PLATINUM,
+        )
+
+    def line_for(self, part, quantity, **kwargs):
+        resp = self.make_request([{'part': str(part.id), 'quantity': quantity, 'required_date': '2099-01-10'}])
+        return PartRequestLine.objects.get(pk=resp.data['lines'][0]['id'])
+
+    def rows(self, url):
+        self.client.force_authenticate(user=self.cluster_manager)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {r['part']['id']: r for r in response.data['results']}
+
+    def deliver_fully(self, line, quantity):
+        parts_rules.approve_line(line, by=self.regional_manager)
+        delivery = parts_rules.record_delivery(line, by=self.regional_manager, quantity=quantity)
+        parts_rules.confirm_received(delivery, by=self.tech)
+        return delivery
+
+    # ── requests-summary ──
+
+    def test_requested_approved_and_total_per_part(self):
+        self.line_for(self.part, 3)  # Requested
+        partly = self.line_for(self.part, 4)  # Approved, 1 of 4 delivered -> 3 still to receive
+        self.deliver_fully(partly, 1)
+        awaiting = self.line_for(self.part2, 2)  # Pending: recorded by approver, not yet confirmed
+        parts_rules.approve_line(awaiting, by=self.regional_manager)
+        parts_rules.record_delivery(awaiting, by=self.regional_manager, quantity=2)
+
+        rows = self.rows('/api/manager/requests-summary/')
+        oil = rows[str(self.part.id)]
+        self.assertEqual((oil['requested'], oil['approved'], oil['total']), (3, 3, 6))
+        belt = rows[str(self.part2.id)]
+        self.assertEqual((belt['requested'], belt['approved'], belt['total']), (0, 2, 2))
+        self.assertEqual(oil['part']['name'], 'Oil Filter')
+
+    def test_declined_cancelled_and_delivered_lines_are_excluded(self):
+        declined = self.line_for(self.part, 5)
+        parts_rules.decline_line(declined, by=self.regional_manager, reason='No stock')
+        cancelled = self.make_request([{'part': str(self.part.id), 'quantity': 6, 'required_date': '2099-01-10'}])
+        self.client.post(f"/api/part-requests/{cancelled.data['id']}/cancel/")
+        done = self.line_for(self.part, 2)
+        self.deliver_fully(done, 2)
+
+        self.assertEqual(self.rows('/api/manager/requests-summary/'), {})
+
+    def test_requests_summary_only_counts_my_cluster(self):
+        self.client.post('/api/part-requests/', {
+            'base_station': str(self.other_station.id),
+            'lines': [{'part': str(self.part.id), 'quantity': 9, 'required_date': '2099-01-10'}],
+        }, format='json')
+        self.assertEqual(self.rows('/api/manager/requests-summary/'), {})
+
+    def test_requests_summary_for_a_manager_without_a_cluster_is_empty(self):
+        self.line_for(self.part, 1)
+        self.cluster_manager.cluster = None
+        self.cluster_manager.save()
+        self.assertEqual(self.rows('/api/manager/requests-summary/'), {})
+
+    # ── usage-summary ──
+
+    def log_usage(self, quantity):
+        response = self.client.post('/api/part-usages/', {
+            'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+            'part': str(self.part.id), 'qty_used': quantity, 'photo': make_jpeg(),
+        }, format='multipart')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return PartUsage.objects.get(pk=response.data['id'])
+
+    def test_delivered_and_used_this_month_by_default(self):
+        line = self.line_for(self.part, 5)
+        self.deliver_fully(line, 4)
+        self.log_usage(1)
+        self.log_usage(2)
+
+        data = self.rows('/api/manager/usage-summary/')[str(self.part.id)]
+        self.assertEqual((data['delivered'], data['used']), (4, 3))
+        month = self.client.get('/api/manager/usage-summary/').data['month']
+        self.assertEqual(month, timezone.localdate().strftime('%Y-%m'))
+
+    def test_other_months_are_excluded_and_selectable(self):
+        line = self.line_for(self.part, 5)
+        delivery = self.deliver_fully(line, 4)
+        last_month = timezone.now() - datetime.timedelta(days=40)
+        type(delivery).objects.filter(pk=delivery.pk).update(received_at=last_month)
+        old = self.log_usage(2)
+        PartUsage.objects.filter(pk=old.pk).update(created=last_month)
+        self.log_usage(1)
+
+        this_month = self.rows('/api/manager/usage-summary/')[str(self.part.id)]
+        self.assertEqual((this_month['delivered'], this_month['used']), (0, 1))
+
+        key = last_month.strftime('%Y-%m')
+        earlier = self.rows(f'/api/manager/usage-summary/?month={key}')[str(self.part.id)]
+        self.assertEqual((earlier['delivered'], earlier['used']), (4, 2))
+
+    def test_unconfirmed_deliveries_do_not_count_as_delivered(self):
+        line = self.line_for(self.part, 5)
+        parts_rules.approve_line(line, by=self.regional_manager)
+        parts_rules.record_delivery(line, by=self.regional_manager, quantity=3)  # field team has not confirmed
+        self.assertEqual(self.rows('/api/manager/usage-summary/'), {})
+
+    def test_usage_summary_only_counts_my_cluster(self):
+        far_wo = WorkOrder.objects.create(base_station=self.other_station, type=WorkOrder.TYPE_PREVENTIVE)
+        PartUsage.objects.create(work_order=far_wo, asset=self.asset, part=self.part, qty_used=7)
+        self.assertEqual(self.rows('/api/manager/usage-summary/'), {})
+
+    def test_invalid_month_is_rejected(self):
+        self.client.force_authenticate(user=self.cluster_manager)
+        for bad in ('2026-13', 'november', '2026-1'):
+            response = self.client.get(f'/api/manager/usage-summary/?month={bad}')
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, bad)
+
+    # ── usage list defaults to this month ──
+
+    def test_usage_list_defaults_to_this_month(self):
+        old = self.log_usage(2)
+        PartUsage.objects.filter(pk=old.pk).update(created=timezone.now() - datetime.timedelta(days=40))
+        self.log_usage(1)
+        self.client.force_authenticate(user=self.cluster_manager)
+
+        self.assertEqual(len(self.client.get('/api/manager/part-usages/').data), 1)
+        everything = self.client.get('/api/manager/part-usages/?date_from=2000-01-01')
+        self.assertEqual(len(everything.data), 2)

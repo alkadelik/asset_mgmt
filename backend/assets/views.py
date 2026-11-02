@@ -924,11 +924,84 @@ def manager_part_usages(request):
     if params.get('recorded_by'):
         qs = qs.filter(recorded_by_id=params['recorded_by'])
     date_from, date_to = _date_param(request, 'date_from'), _date_param(request, 'date_to')
+    if not date_from and not date_to:
+        # The Usage tab shows this month unless told otherwise.
+        date_from = timezone.localdate().replace(day=1)
     if date_from:
         qs = qs.filter(created__date__gte=date_from)
     if date_to:
         qs = qs.filter(created__date__lte=date_to)
     return Response(PartUsageSerializer(qs, many=True, context={'request': request}).data)
+
+
+def _part_ref(part):
+    return {'id': str(part.id), 'name': part.name, 'sku': part.sku}
+
+
+@api_view(['GET'])
+def manager_requests_summary(request):
+    """'Waiting on parts': per part, what is still requested, and what is approved and yet to arrive."""
+    if not request.user.cluster_id:
+        return Response({'results': []})
+    lines = PartRequestLine.objects.filter(
+        request__base_station__cluster_id=request.user.cluster_id,
+        status__in=[PartRequestLine.STATUS_REQUESTED, PartRequestLine.STATUS_APPROVED, PartRequestLine.STATUS_PENDING],
+    ).select_related('part').prefetch_related('deliveries')
+
+    totals = {}
+    for line in lines:
+        row = totals.setdefault(line.part_id, {'part': _part_ref(line.part), 'requested': 0, 'approved': 0})
+        if line.status == PartRequestLine.STATUS_REQUESTED:
+            row['requested'] += line.quantity
+        else:
+            row['approved'] += max(line.quantity - line.delivered_qty, 0)
+    results = [{**row, 'total': row['requested'] + row['approved']} for row in totals.values()]
+    results.sort(key=lambda r: r['part']['name'])
+    return Response({'results': results})
+
+
+@api_view(['GET'])
+def manager_usage_summary(request):
+    """'This month': per part, what was delivered (confirmed received) and what was used."""
+    month = request.query_params.get('month')
+    if month:
+        try:
+            year, month_number = (int(x) for x in month.split('-'))
+            if len(month) != 7 or not 1 <= month_number <= 12:
+                raise ValueError
+            start = datetime.date(year, month_number, 1)
+        except ValueError:
+            return Response({'detail': 'month must look like 2026-11.'}, status=status.HTTP_400_BAD_REQUEST)
+    else:
+        start = timezone.localdate().replace(day=1)
+    end = (start.replace(day=28) + datetime.timedelta(days=4)).replace(day=1) - datetime.timedelta(days=1)
+
+    result = {'month': start.strftime('%Y-%m'), 'results': []}
+    if not request.user.cluster_id:
+        return Response(result)
+
+    totals = {}
+
+    def row_for(part):
+        return totals.setdefault(part.id, {'part': _part_ref(part), 'delivered': 0, 'used': 0})
+
+    deliveries = PartDelivery.objects.filter(
+        line__request__base_station__cluster_id=request.user.cluster_id,
+        marked_delivered_at__isnull=False,
+        received_at__date__gte=start, received_at__date__lte=end,
+    ).select_related('line__part')
+    for delivery in deliveries:
+        row_for(delivery.line.part)['delivered'] += delivery.quantity
+
+    usages = PartUsage.objects.filter(
+        work_order__base_station__cluster_id=request.user.cluster_id,
+        created__date__gte=start, created__date__lte=end,
+    ).select_related('part')
+    for usage in usages:
+        row_for(usage.part)['used'] += usage.qty_used
+
+    result['results'] = sorted(totals.values(), key=lambda r: r['part']['name'])
+    return Response(result)
 
 
 @api_view(['GET'])
