@@ -4,10 +4,11 @@ import datetime
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from . import ratings, reports
+from .permissions import IsClusterManager
 from .models import (
     Alarm, Asset, AssetCategory, DieselDelivery, InspectionResponse, MeterReading, Personnel, Role,
 )
@@ -59,6 +60,7 @@ def _name(person):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def overview(request):
     """Base stations overview: tiles and the week grid."""
     start = _week(request)
@@ -88,6 +90,7 @@ def overview(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def station_detail(request, pk):
     station = get_object_or_404(request.user.accessible_stations(), pk=pk)
     month = _month(request)
@@ -148,6 +151,7 @@ def station_detail(request, pk):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def asset_detail(request, pk):
     asset = get_object_or_404(
         Asset.objects.select_related('asset_category', 'location__base_station'),
@@ -180,6 +184,7 @@ def asset_detail(request, pk):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def asset_types(request):
     stations = _stations(request)
     counts = dict(
@@ -192,6 +197,7 @@ def asset_types(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def asset_type_grid(request, pk):
     asset_type = get_object_or_404(AssetCategory, pk=pk)
     start = _week(request)
@@ -214,6 +220,7 @@ def asset_type_grid(request, pk):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def staff(request):
     people = Personnel.objects.filter(
         cluster_team__cluster_id=request.user.cluster_id, role__name__in=Role.FIELD_ROLES, is_active=True,

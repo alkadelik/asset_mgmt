@@ -386,3 +386,28 @@ class StaffTests(ReportTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual([r['name'] for r in response.data['results']], ['Lee Lead', 'tech1'])
         self.assertEqual(set(response.data['results'][0]), {'id', 'name'})
+
+
+class AccessTests(ReportTestCase):
+    URLS = (
+        '/api/reports/overview/', '/api/reports/asset-types/', '/api/reports/staff/',
+        '/api/manager/part-requests/', '/api/manager/part-usages/', '/api/manager/stock/',
+        '/api/manager/requests-summary/', '/api/manager/usage-summary/',
+    )
+
+    def test_field_team_is_refused(self):
+        self.client.force_authenticate(user=self.tech)
+        for url in self.URLS:
+            self.assertEqual(self.client.get(url).status_code, status.HTTP_403_FORBIDDEN, url)
+        self.assertEqual(self.client.get(f'/api/reports/stations/{self.station.id}/').status_code, 403)
+        self.assertEqual(self.client.get(f'/api/reports/assets/{self.asset.id}/').status_code, 403)
+        self.assertEqual(self.client.get(f'/api/reports/asset-types/{self.panel_type.id}/grid/').status_code, 403)
+
+    def test_cluster_manager_is_allowed(self):
+        for url in self.URLS:
+            self.assertEqual(self.client.get(url).status_code, status.HTTP_200_OK, url)
+
+    def test_signed_out_is_refused(self):
+        self.client.force_authenticate(user=None)
+        for url in self.URLS:
+            self.assertIn(self.client.get(url).status_code, (401, 403), url)

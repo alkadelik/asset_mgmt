@@ -25,6 +25,7 @@ from .models import (
 )
 from . import parts as parts_rules
 from . import ratings
+from .permissions import IsClusterManager
 from .serializers import (
     PersonnelSerializer, WorkOrderDetailSerializer, AlarmDetailSerializer,
     AlarmNoteSerializer, InspectionResponseDetailSerializer,
@@ -930,6 +931,7 @@ def _date_param(request, name):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def manager_part_requests(request):
     qs = PartRequestLine.objects.filter(
         request__base_station__cluster_id=request.user.cluster_id,
@@ -954,6 +956,7 @@ def manager_part_requests(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def manager_part_usages(request):
     qs = _usage_queryset().filter(work_order__base_station__cluster_id=request.user.cluster_id)
     params = request.query_params
@@ -979,6 +982,7 @@ def _part_ref(part):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def manager_requests_summary(request):
     """'Waiting on parts': per part, what is still requested, and what is approved and yet to arrive."""
     if not request.user.cluster_id:
@@ -1001,6 +1005,7 @@ def manager_requests_summary(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def manager_usage_summary(request):
     """'This month': per part, what was delivered (confirmed received) and what was used."""
     month = request.query_params.get('month')
@@ -1045,6 +1050,7 @@ def manager_usage_summary(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsClusterManager])
 def manager_stock(request):
     """Stock held by each team in the manager's cluster, plus the cluster total per part."""
     rows = PartStock.objects.filter(
