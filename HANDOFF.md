@@ -1,4 +1,4 @@
-# Handoff: decisions and work from the claude.ai session (27 Oct – 2 Nov 2026)
+# Handoff: decisions and work from the claude.ai session (27 Oct – 2 Nov 2026, updated 2 Nov afternoon)
 
 This file brings Claude Code up to date with work done outside it. Read it before changing the app.
 The working rule in `CHECKLIST.md` still applies: a question is not a command; only work on what is asked.
@@ -58,26 +58,74 @@ A clickable mockup of all screens below exists as a private claude.ai Design can
 
 Mockup conventions worth keeping:
 - Phone width 390, cards on `#FAFAF9` with white 14px-radius cards, 44px min touch targets.
-- Status grids use: Good = green dot, Fair = amber dot, **Poor = red square** (not colour-only), No maintenance = hollow grey ring.
+- Status grids use: Good = green dot, Fair = amber dot, **Poor = red square** (not colour-only), Missed = hollow dark ring, Not scheduled = short grey dash.
 - Health/SLA % text: ≥95 green, 90–94 amber, <90 red.
 
 ---
 
-## 4. Maintenance reports (Cluster Manager) — UI designed, backend NOT built
+## 4. Maintenance reports (Cluster Manager) — SPECIFIED 2 Nov, not built
 
-Six read-only screens, scoped to the manager's cluster, shown a month at a time (backend keeps all history). Tabs: **Stations · Asset types · Staff**.
+Spec agreed with the user on 2 Nov 2026 (source: claude.ai doc "Maintenance Reports — Spec", plus the user's Form 1a and Defects Rating Criteria). This section is the source of truth for Claude Code.
 
-1. **Base stations overview** — summary tiles (station count, visits this week, avg SLA); a grid: one row per station (site ID + SLA %), one column per day (week view with prev/next arrows, not pagination). Cell = Good/Fair/Poor/No maintenance. Tap a row → station detail.
-2. **Base-station detail** (e.g. OYO123) — urgent items banner; tiles: checks this month (21/25), overall health, SLA %, diesel at last check; assets with health pill (tap → asset detail); open notes/tasks; maintenance & alarm history (item, date, status); diesel delivery log (date, qty L, level before → after mm, by).
-3. **Base-station asset detail** (e.g. OYO123 Generator) — tiles: health, SLA, checks, run hours (generators), last service, next service; last readings (run hours, diesel level, voltage); maintenance & alarm history with who did it.
-4. **Cluster asset types** — one row per asset type: count, health %, bar; "weakest type" tile. Tap → single type grid.
-5. **Single asset type in cluster** — same day grid as screen 1 but scored on that asset type only. Tap row → that station's asset.
-6. **Cluster staff list** — name, clusters covered, count; unassigned staff flagged.
+### 4.1 Asset types (replace the current categories)
+Nine asset types, grouped under Form 1a headings. Remove HVAC/AC, Rectifier, Hybrid DC Power (and any other old categories). Checklist points = Form 1a "Defects scope". Defects = Defects Rating Criteria, each tagged **Poor** or **Fair**.
 
-Open before building the backend for these:
-- **Health % and SLA % have no definition yet** — need formulas from the user.
-- **Good/Fair/Poor per visit doesn't exist.** The rating currently lives on the checklist template (`AssetCheckList.condition`), not on each inspection. The grids need a per-visit, per-asset rating (e.g. on `InspectionResponse`). Not added yet — confirm with the user first.
-- Diesel: tank level in mm, deliveries in litres (keep that split).
+| Group | Asset type | Checklist points | Poor defects | Fair defects |
+| --- | --- | --- | --- | --- |
+| 1. Janitorial Services | Janitorial Services (one per site; covers 2 m perimeter setback, perimeter fence and entrance doors, concrete floors and gravel cover) | Cleanliness of concrete and gravel floors; Additional gravel required; Oil and diesel spillage; Rodent or insect infestations; Site access control (locks etc.); Warning signs and safety labels | Rodents; Perimeter fence; Major granite stain; Damaged shelter floor / leaking roof (indoor sites); Palisade fence earthing | Internal cleanliness; External cleanliness; Minor granite stain; Shelter cleanliness (indoor sites) |
+| 2. Generator Power Supply | Diesel Generator | Generator cleanliness; Housing rust, leakages, bolts and nuts; Oil, diesel and coolant leakages; Wiring and control system; Pipes and hoses; Exhaust secure and free of obstruction; Exhaust carbon build-up; Incorrect load sizing; Proper cabling; Engine condition; Electrical condition; Engine vibration ("Generator Operations" items are part of this checklist) | Engine oil, diesel or radiator coolant leakages; Engine problems; Exhaust conditions; Generator vibration; Safety devices bypassed; Generator earthing | Generator housing; Generator cleanliness; Minor wiring (battery terminals etc.); Generator not installed on plinth |
+| 2. Generator Power Supply | Diesel Tank | Tank cleanliness; Tank rust and leakages; Water separator condition; Diesel leakages; Diesel pipes and hoses | Leakages from diesel tank; Water ingress; Severe rust; Water separator; Galvanized diesel line; Tank tilting; Tank not installed on plinth; Tank earthing | Minor rust; Tank dented; Tank calibration |
+| 3. Solar Power Supply | Solar Panels and Structure | Solar panel condition; Panel structure condition; Solar control condition | Structural stability; Solar structure earthing; Solar cables termination | Solar panels condition; Tree shading solar panel |
+| 3. Solar Power Supply | Battery Packs | Battery pack condition | (none yet) | (none yet) |
+| 4. Grid Power Supply | Transformer | Transformer condition; Grid cables | Transformer inside the site and not fenced; Grid functionality; Grid cable unsafe termination/connection/condition | Transformer condition |
+| 5. Control Panels | AC Control Panel | AC control panel condition | Exposed terminals; Faulty panel door; Damaged components; Bypassed control panel | Poor cable management; Panel cleanliness; Aged components; Panel labelling |
+| 5. Control Panels | DC Control Panel | DC control panel condition | (same as AC Control Panel) | (same as AC Control Panel) |
+| 6. Telecoms Tower | Tower Structure | Painting, rust, bolts etc.; Security and aviation light; Cables, cable trays and arrangement; Earthing system | Earthing; Foundation structure; Tower deflection; Unsafe tower ladder | Painting wear; Aviation light; Security light; Cables arrangement |
+
+Left out for now: HSE (in criteria, not on form), Active Equipment Cabinets, Any Other Equipment/Facility.
+
+### 4.2 Ratings
+- **Asset rating per visit:** set when the asset is marked complete, from the defects ticked (the existing per-category "conditions" multi-select): any Poor defect → Poor; else any Fair defect → Fair; else Good. Nobody picks a rating by hand. Store it on that visit's record so history never changes.
+- **Default is Good.** Very minor issues are not recorded. An asset keeps its rating until a later complete visit changes it ("current rating" = latest completed visit; Good if none).
+- **Station rating per visit day** (only for a complete visit = every active asset at the station marked complete), checked in order:
+  1. Poor if Diesel Generator is Poor, OR Diesel Tank is Poor, OR any two other assets are Poor.
+  2. Good if no asset is Poor and no more than two assets are Fair.
+  3. Fair otherwise (e.g. one Poor asset that isn't generator/tank; or 3+ Fair).
+  A station without a generator or tank uses only the "two other assets" part of rule 1. Store the result when the visit completes.
+- **Grid cell per station per day:** Good / Fair / Poor (complete visit that day) · **Missed** (scheduled but not done, or only partly done) · **Not scheduled**. The single-asset-type grid uses that asset's rating per day.
+- **Visit date** = the day the work was done (Africa/Lagos).
+
+### 4.3 Measures
+| Measure | Rule |
+| --- | --- |
+| Station SLA % | Complete visits ÷ scheduled visits in the period (partial = not done). |
+| Asset checks (e.g. "21 / 25") | Maintenance completed on the asset ÷ maintenance scheduled for it in the period. **Hardcoded placeholder in the UI for now** (asset SLA is still undefined). |
+| Asset SLA % | Undefined — placeholder. |
+| Health % (station, asset, asset type, cluster) | Undefined — placeholder. |
+| Colour bands | ≥95 green, 90–94 amber, <90 red. Store as settings (not hardcoded) so a future Settings screen can change them. |
+Period = calendar month by default; backend keeps all history.
+
+### 4.4 Data model changes
+- `AssetCategory`: the nine types above; add `group` (Form 1a heading) and an optional service interval (run hours or days) used for "Next service". Next service only shows where an interval is set.
+- `PMQuestion`: load checklist points per type. `Condition`: add `severity` (poor/fair) and load defects per type.
+- `InspectionResponse`: add `rating` (good/fair/poor), computed on mark-complete.
+- Station visit rating stored when the last asset completes.
+- Remove `AssetCheckList.condition` (template-level Good/Fair/Poor; replaced by the above).
+- `MeterReading` (diesel level) and `DieselDelivery` (tank level before/after): add **litres** beside mm. The Field Team enters both (the app does not convert).
+- New simple settings store: colour band thresholds; service intervals. Settings has no UI scope yet.
+- Field Team UI: the asset checklist screen must let them tick defects (grouped Poor / Fair) and shows the resulting rating before Mark complete; diesel level inputs take mm and L.
+
+### 4.5 Screens (all scoped to the manager's cluster; tabs Stations · Asset types · Staff)
+1. **Base stations overview** — tiles (stations, visits this week, avg SLA); week grid (prev/next week), cells per 4.2; tap row → detail.
+2. **Base-station detail** — urgent items (open alarms + open issues); tiles: checks this month, overall (station) rating, SLA %, diesel at last check (L and mm); assets with current rating; open notes/tasks; maintenance & alarm history; diesel delivery log.
+3. **Asset detail** — current rating; checks (placeholder); SLA (placeholder); run hours (generator); last service; next service (only if interval set); last readings (diesel shows mm and L); history with who did it.
+4. **Asset types** — row per type: count, health % (placeholder); tap → single-type grid.
+5. **Single asset type** — same grid, that type's rating per station per day.
+6. **Staff list** — names only (staff belong to one cluster).
+
+### 4.6 Reminders and later list (do not build)
+- Reminders for the user: define asset SLA (keep "21/25" placeholder until then); set generator service hours in Settings (per base station or asset type); define health %; decide whether alarms affect health/SLA.
+- Later: HSE; Active Equipment Cabinets and Any Other Equipment; Battery Packs has no defects (always Good until added); Settings screens (unscoped); voltage reading (not recorded today).
 
 ---
 
@@ -157,15 +205,10 @@ API role/scope enforcement (and missing station checks on some write endpoints);
 
 ---
 
-## 6. App work implied, in rough order
-1. Real login + role-based landing; menu for Cluster Managers; logout button.
-2. Rename remaining "technician" wording in the UI to Field Team.
-3. Update `src/dev/mockData.ts` and its tests for the new API shapes (the `tester` build runs on mock data).
-4. Usage photo capture + compression + offline file queue.
-5. Multi-part request form, my requests, confirm received, cancel.
-6. Cluster Manager Consumables screens (Requests, Usage) + the two summary endpoints.
-7. Notifications list with unread count.
-8. Maintenance reports (after health/SLA and per-visit rating are defined).
+## 6. App work status
+Done by Claude Code (see git log): login + role landing + logout; Cluster Manager menu; Field Team wording; blank mock/seed data; usage photo; part requests; Consumables Requests/Usage screens + summary endpoints; notifications; Request parts on Site actions.
+
+Next: Maintenance reports, as specified in section 4.
 
 ## 7. Known issues found along the way
 - Logout doesn't revoke tokens (token blacklist app not installed) — CHECKLIST Phase 3.
