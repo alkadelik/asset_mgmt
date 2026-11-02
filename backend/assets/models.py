@@ -299,6 +299,14 @@ class Personnel(AbstractUser):
             if other_lead:
                 raise ValidationError({'role': f'{self.cluster_team} already has a Team Lead ({other_lead}).'})
 
+    def accessible_stations(self):
+        """Stations this person may work at. Cluster Managers get every station in their cluster
+        (no per-station assignment); everyone else gets the stations assigned to them."""
+        if self.role_id and self.role.name == Role.CLUSTER_MANAGER:
+            return BaseStation.objects.filter(cluster_id=self.cluster_id) if self.cluster_id \
+                else BaseStation.objects.none()
+        return self.stations.all()
+
     @property
     def name(self):
         return self.get_full_name() or self.username

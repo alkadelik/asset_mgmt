@@ -33,7 +33,7 @@ class PersonnelSerializer(serializers.ModelSerializer):
         return {'id': str(obj.cluster_id), 'name': obj.cluster.name} if obj.cluster_id else None
 
     def get_stations(self, obj):
-        return [str(s.id) for s in obj.stations.all()]
+        return [str(s.id) for s in obj.accessible_stations()]
 
 
 class BaseStationSummarySerializer(serializers.ModelSerializer):

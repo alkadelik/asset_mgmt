@@ -80,7 +80,7 @@ def today(request):
     user = request.user
     today_date = timezone.localdate()
 
-    assigned_stations = user.stations.prefetch_related('clients', 'manager').all()
+    assigned_stations = user.accessible_stations().prefetch_related('clients', 'manager')
 
     # Routine: today's preventive work orders for this technician's stations
     routine_wos = WorkOrder.objects.filter(
@@ -244,7 +244,7 @@ def alarms(request):
         return Response({'detail': 'asset is required.'}, status=status.HTTP_400_BAD_REQUEST)
     try:
         asset = Asset.objects.select_related('location__base_station').get(
-            pk=asset_id, location__base_station__in=request.user.stations.all()
+            pk=asset_id, location__base_station__in=request.user.accessible_stations()
         )
     except Asset.DoesNotExist:
         return Response({'detail': 'Asset not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -317,7 +317,7 @@ def alarm_add_note(request, pk):
 def inspection_responses(request):
     if request.method == 'GET':
         qs = InspectionResponse.objects.filter(
-            work_order__base_station__in=request.user.stations.all()
+            work_order__base_station__in=request.user.accessible_stations()
         ).prefetch_related('conditions', 'checklist_responses__question', 'issues')
         return Response(InspectionResponseDetailSerializer(qs, many=True).data)
 
@@ -476,7 +476,7 @@ def conditions(request):
 @api_view(['GET', 'POST'])
 def meter_readings(request):
     if request.method == 'GET':
-        qs = MeterReading.objects.filter(asset__location__base_station__in=request.user.stations.all())
+        qs = MeterReading.objects.filter(asset__location__base_station__in=request.user.accessible_stations())
         asset_id = request.query_params.get('asset')
         if asset_id:
             qs = qs.filter(asset_id=asset_id)
@@ -551,7 +551,7 @@ def meter_readings(request):
 
 @api_view(['GET'])
 def base_stations(request):
-    qs = request.user.stations.select_related('manager').prefetch_related('clients')
+    qs = request.user.accessible_stations().select_related('manager').prefetch_related('clients')
     return Response(BaseStationSummarySerializer(qs, many=True).data)
 
 
@@ -562,7 +562,7 @@ def assets(request):
         return Response({'detail': 'base_station is required.'}, status=status.HTTP_400_BAD_REQUEST)
     qs = Asset.objects.filter(
         location__base_station_id=base_station_id,
-        location__base_station__in=request.user.stations.all(),
+        location__base_station__in=request.user.accessible_stations(),
         status=Asset.STATUS_ACTIVE,
     ).order_by('name')
     return Response(AssetSummarySerializer(qs, many=True).data)
@@ -597,7 +597,7 @@ def parts(request):
 def diesel_deliveries(request):
     if request.method == 'GET':
         qs = DieselDelivery.objects.filter(
-            base_station__in=request.user.stations.all()
+            base_station__in=request.user.accessible_stations()
         ).select_related('base_station__manager', 'vendor').prefetch_related(
             'base_station__clients', 'attachments'
         )
@@ -788,7 +788,7 @@ def _check_photo(upload):
 @api_view(['GET', 'POST'])
 def part_usages(request):
     if request.method == 'GET':
-        qs = _usage_queryset().filter(asset__location__base_station__in=request.user.stations.all())
+        qs = _usage_queryset().filter(asset__location__base_station__in=request.user.accessible_stations())
         work_order_id = request.query_params.get('work_order')
         if work_order_id:
             qs = qs.filter(work_order_id=work_order_id)
@@ -1050,7 +1050,7 @@ def notification_read(request, pk):
 def safety_reports(request):
     if request.method == 'GET':
         qs = SafetyReport.objects.filter(
-            base_station__in=request.user.stations.all()
+            base_station__in=request.user.accessible_stations()
         ).select_related('base_station__manager').prefetch_related(
             'base_station__clients', 'attachments'
         )

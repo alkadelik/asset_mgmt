@@ -144,3 +144,9 @@
 - [ ] Onboard technicians: create accounts, assign stations, set up a password reset process
 - [ ] Decide on an update strategy: `eas update` (OTA) for JS fixes, store builds for native changes
 - [ ] **Released**
+
+## Revisit later
+
+- [ ] Part-usage upload edge case: if the app is killed after the server confirms a usage log but before the queue records it, the replay finds the local photo already deleted and that one log fails (the server never duplicates it; the user re-enters it). Options: check whether the log already exists before re-sending, or keep photos a day after confirmation.
+- [ ] Cluster Manager station access: managers see every station in their cluster (no per-station assignment). Confirm whether a manager should ever span more than one cluster.
+- [ ] Cluster Manager doing routine maintenance: they work the same Today / work-order flow as Field Team and must be at the location (geofence check on start). Confirm nothing else should differ.

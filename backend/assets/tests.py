@@ -1644,3 +1644,56 @@ class ManagerSummaryTests(PartsFixtureMixin, TechnicianAPITestCase):
         self.assertEqual(len(self.client.get('/api/manager/part-usages/').data), 1)
         everything = self.client.get('/api/manager/part-usages/?date_from=2000-01-01')
         self.assertEqual(len(everything.data), 2)
+
+
+class ClusterManagerStationAccessTests(PartsFixtureMixin, TechnicianAPITestCase):
+    """A Cluster Manager needs no station assignments: every station in their cluster is theirs."""
+
+    def setUp(self):
+        super().setUp()
+        other_cluster = Cluster.objects.create(cluster_group=self.cluster.cluster_group, name="Elsewhere")
+        self.other_station = BaseStation.objects.create(
+            cluster=other_cluster, name="Far Station", address="x", site_id="FAR-1",
+            site_classification=BaseStation.CLASS_PLATINUM,
+        )
+        self.other_location = Location.objects.create(base_station=self.other_station, name="Room")
+        self.other_asset = Asset.objects.create(
+            asset_category=self.category, location=self.other_location, name="Far Generator",
+        )
+        today = timezone.localdate()
+        WorkOrder.objects.filter(pk=self.work_order.pk).update(due_date=today)
+        WorkOrder.objects.create(base_station=self.other_station, type=WorkOrder.TYPE_PREVENTIVE, due_date=today)
+        self.assertEqual(self.cluster_manager.stations.count(), 0)
+        self.client.force_authenticate(user=self.cluster_manager)
+
+    def test_today_lists_work_in_my_cluster_only(self):
+        response = self.client.get('/api/today/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        sites = [row['base_station']['site_id'] for row in response.data['routine']]
+        self.assertEqual(sites, ['TST-001'])
+
+    def test_base_station_list_is_my_cluster(self):
+        sites = [s['site_id'] for s in self.client.get('/api/base-stations/').data]
+        self.assertEqual(sites, ['TST-001'])
+
+    def test_assets_at_my_stations_only(self):
+        mine = self.client.get(f'/api/assets/?base_station={self.station.id}')
+        self.assertEqual(len(mine.data), 1)
+        theirs = self.client.get(f'/api/assets/?base_station={self.other_station.id}')
+        self.assertEqual(len(theirs.data), 0)
+
+    def test_a_manager_without_a_cluster_sees_no_stations(self):
+        self.cluster_manager.cluster = None
+        self.cluster_manager.save()
+        self.assertEqual(self.client.get('/api/base-stations/').data, [])
+        self.assertEqual(self.client.get('/api/today/').data['routine'], [])
+
+    def test_field_team_still_see_only_assigned_stations(self):
+        second = BaseStation.objects.create(
+            cluster=self.cluster, name="Second", address="y", site_id="TST-002",
+            site_classification=BaseStation.CLASS_PLATINUM,
+        )
+        self.assertIsNotNone(second)
+        self.client.force_authenticate(user=self.tech)
+        sites = [s['site_id'] for s in self.client.get('/api/base-stations/').data]
+        self.assertEqual(sites, ['TST-001'])
