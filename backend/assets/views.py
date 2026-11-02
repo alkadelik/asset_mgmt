@@ -381,7 +381,7 @@ def inspection_response_detail(request, pk):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             # Generators must have today's run-hours and diesel-level readings — no exception.
-            if ir.asset.asset_category and ir.asset.asset_category.name == 'Generator':
+            if ir.asset.asset_category and ir.asset.asset_category.name == AssetCategory.DIESEL_GENERATOR:
                 today = timezone.localdate()
                 has_run_hours = ir.asset.meter_readings.filter(
                     reading_type=MeterReading.TYPE_RUN_HOURS, date=today
@@ -647,7 +647,7 @@ def diesel_deliveries(request):
     # as a fresh reading so the Readings section and future validation see the new level.
     if tank_level_after is not None:
         generator = Asset.objects.filter(
-            location__base_station=base_station, asset_category__name='Generator',
+            location__base_station=base_station, asset_category__name=AssetCategory.DIESEL_GENERATOR,
             status=Asset.STATUS_ACTIVE,
         ).first()
         if generator:

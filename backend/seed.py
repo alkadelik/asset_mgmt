@@ -1,7 +1,7 @@
 """
 Run with: python manage.py shell < seed.py
 Creates reference data only (roles, users, regions/clusters/teams, stations, assets,
-checklists, conditions, parts, vendors, opening regional stock, today's scheduled work
+the nine Form 1a asset types with their checklists and defects, colour-band settings, parts, vendors, opening regional stock, today's scheduled work
 orders). No maintenance, alarms, diesel, safety, part requests or usage.
 Safe to re-run — uses get_or_create throughout.
 """
@@ -9,11 +9,14 @@ import django
 django.setup()
 
 from django.utils import timezone
+
+from assets import app_settings
+from assets.reference_data import load_asset_types
 from assets.models import (
     Region, ClusterGroup, Cluster, Client, BaseStation, Location,
     AssetCategory, Asset, Condition, Role, Personnel, ClusterTeam,
     PMCategory, AssetCheckList, PMQuestion,
-    WorkOrder, Part, PartStock, StockMovement, Vendor,
+    WorkOrder, Part, PartStock, Setting, StockMovement, Vendor,
 )
 
 today = timezone.localdate()
@@ -133,264 +136,67 @@ loc_e, _ = Location.objects.get_or_create(
     base_station=station_e, name="Equipment Room E", defaults={"parent_location": None}
 )
 
-print("Seeding asset categories...")
-cat_gen, _ = AssetCategory.objects.get_or_create(name="Generator")
-cat_ac, _ = AssetCategory.objects.get_or_create(name="Air Conditioning")
-cat_rect, _ = AssetCategory.objects.get_or_create(name="Rectifier")
-cat_battery, _ = AssetCategory.objects.get_or_create(name="Battery Bank")
-cat_solar, _ = AssetCategory.objects.get_or_create(name="Solar")
-cat_dc, _ = AssetCategory.objects.get_or_create(name="DC Electricals")
-cat_ac_elec, _ = AssetCategory.objects.get_or_create(name="AC Electricals")
-cat_janitorial, _ = AssetCategory.objects.get_or_create(name="Janitorial")
+print("Seeding asset types, checklists and defects...")
+categories = load_asset_types(AssetCategory, Condition, AssetCheckList, PMQuestion)
 
-print("Seeding conditions...")
-for name in ["Oil leak detected", "Abnormal vibration", "Overheating", "Unusual noise"]:
-    Condition.objects.get_or_create(name=name, asset_category=cat_gen)
-for name in ["Coolant low", "Filter blocked", "Compressor fault", "Electrical fault"]:
-    Condition.objects.get_or_create(name=name, asset_category=cat_ac)
-for name in ["Output voltage low", "Fan failure", "Overtemperature alarm"]:
-    Condition.objects.get_or_create(name=name, asset_category=cat_rect)
-for name in ["Cell voltage low", "High temperature", "Capacity degraded"]:
-    Condition.objects.get_or_create(name=name, asset_category=cat_battery)
+print("Seeding settings...")
+Setting.objects.get_or_create(key=app_settings.COLOUR_BANDS, defaults={"value": app_settings.DEFAULTS[app_settings.COLOUR_BANDS]})
 
-print("Seeding checklist questions...")
-pm_cat, _ = PMCategory.objects.get_or_create(name="Routine PM")
+# Each station gets a different mix, so the ratings see stations with and without a
+# generator or tank. (type, asset name, tag)
+STATION_ASSETS = {
+    "A": [
+        ("Janitorial Services", "Site Janitorial — Victoria Island Alpha", "JAN-A001"),
+        ("Diesel Generator", "Generator Set A", "GEN-A001"),
+        ("Diesel Tank", "Diesel Tank A", "TNK-A001"),
+        ("AC Control Panel", "AC Control Panel A", "ACP-A001"),
+        ("DC Control Panel", "DC Control Panel A", "DCP-A001"),
+        ("Tower Structure", "Tower A", "TWR-A001"),
+    ],
+    "B": [
+        ("Janitorial Services", "Site Janitorial — Lekki Phase 1 Beta", "JAN-B001"),
+        ("Diesel Generator", "Generator Set B", "GEN-B001"),
+        ("Diesel Tank", "Diesel Tank B", "TNK-B001"),
+        ("Solar Panels and Structure", "Solar Array B", "SOL-B001"),
+        ("Battery Packs", "Battery Packs B", "BAT-B001"),
+        ("DC Control Panel", "DC Control Panel B", "DCP-B001"),
+    ],
+    "C": [
+        ("Janitorial Services", "Site Janitorial — Ikeja City Mall Gamma", "JAN-C001"),
+        ("Diesel Generator", "Generator Set C", "GEN-C001"),
+        ("Diesel Tank", "Diesel Tank C", "TNK-C001"),
+        ("Transformer", "Transformer C", "TRF-C001"),
+        ("AC Control Panel", "AC Control Panel C", "ACP-C001"),
+        ("DC Control Panel", "DC Control Panel C", "DCP-C001"),
+    ],
+    # No generator or tank: grid and solar only.
+    "D": [
+        ("Janitorial Services", "Site Janitorial — Wuse II Delta", "JAN-D001"),
+        ("Solar Panels and Structure", "Solar Array D", "SOL-D001"),
+        ("Battery Packs", "Battery Packs D", "BAT-D001"),
+        ("Transformer", "Transformer D", "TRF-D001"),
+        ("AC Control Panel", "AC Control Panel D", "ACP-D001"),
+        ("DC Control Panel", "DC Control Panel D", "DCP-D001"),
+        ("Tower Structure", "Tower D", "TWR-D001"),
+    ],
+    # A generator but no tank.
+    "E": [
+        ("Janitorial Services", "Site Janitorial — GRA Phase 2 Epsilon", "JAN-E001"),
+        ("Diesel Generator", "Generator Set E", "GEN-E001"),
+        ("AC Control Panel", "AC Control Panel E", "ACP-E001"),
+        ("Tower Structure", "Tower E", "TWR-E001"),
+    ],
+}
+LOCATIONS = {"A": loc_a, "B": loc_b, "C": loc_c, "D": loc_d, "E": loc_e}
+for key, rows in STATION_ASSETS.items():
+    print(f"Seeding assets at Station {key}...")
+    for type_name, asset_name, tag in rows:
+        Asset.objects.get_or_create(
+            name=asset_name,
+            location=LOCATIONS[key],
+            defaults={"asset_category": categories[type_name], "status": Asset.STATUS_ACTIVE, "tag": tag},
+        )
 
-gen_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_gen,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "Generator routine inspection", "condition": None},
-)
-for q_text in [
-    "Visual inspection completed — no leaks or damage?",
-    "Oil level checked and topped up if required?",
-    "Coolant level checked?",
-    "Load test performed (minimum 15 minutes)?",
-    "Exhaust clear and unrestricted?",
-    "Battery terminals clean and secure?",
-]:
-    PMQuestion.objects.get_or_create(task_template=gen_checklist, question=q_text)
-
-ac_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_ac,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "AC unit routine inspection", "condition": None},
-)
-for q_text in [
-    "Filter cleaned or replaced?",
-    "Coolant/refrigerant level verified OK?",
-    "Condenser coils inspected and cleaned?",
-    "Drain pan and drain line cleared?",
-    "Compressor operating within normal parameters?",
-]:
-    PMQuestion.objects.get_or_create(task_template=ac_checklist, question=q_text)
-
-rect_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_rect,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "Rectifier routine inspection", "condition": None},
-)
-for q_text in [
-    "Output voltage within acceptable range?",
-    "All module indicator lights green?",
-    "Fans operating (no unusual noise)?",
-    "Connections and terminals secure?",
-]:
-    PMQuestion.objects.get_or_create(task_template=rect_checklist, question=q_text)
-
-solar_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_solar,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "Solar array routine inspection", "condition": None},
-)
-for q_text in [
-    "Panels clean and free of obstruction?",
-    "Mounting frame secure, no corrosion?",
-    "Charge controller output within range?",
-    "Cabling and connectors intact?",
-]:
-    PMQuestion.objects.get_or_create(task_template=solar_checklist, question=q_text)
-
-dc_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_dc,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "DC electricals routine inspection", "condition": None},
-)
-for q_text in [
-    "DC distribution board terminals tight and corrosion-free?",
-    "Cable insulation intact, no exposed conductors?",
-    "Earthing/grounding continuity verified?",
-]:
-    PMQuestion.objects.get_or_create(task_template=dc_checklist, question=q_text)
-
-ac_elec_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_ac_elec,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "AC electricals routine inspection", "condition": None},
-)
-for q_text in [
-    "AC distribution board terminals tight and corrosion-free?",
-    "Circuit breakers operating correctly?",
-    "Surge protection devices intact?",
-]:
-    PMQuestion.objects.get_or_create(task_template=ac_elec_checklist, question=q_text)
-
-janitorial_checklist, _ = AssetCheckList.objects.get_or_create(
-    asset_category=cat_janitorial,
-    pm_category=None,
-    asset=None,
-    defaults={"instructions": "Site janitorial servicing", "condition": None},
-)
-for q_text in [
-    "Equipment room floor swept and mopped?",
-    "Waste bins emptied?",
-    "Windows/vents free of dust and debris?",
-    "Pest control check completed?",
-]:
-    PMQuestion.objects.get_or_create(task_template=janitorial_checklist, question=q_text)
-
-print("Seeding assets at Station A...")
-gen_a, _ = Asset.objects.get_or_create(
-    name="Generator Set A",
-    location=loc_a,
-    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-A001"},
-)
-ac_a, _ = Asset.objects.get_or_create(
-    name="Air Conditioning Unit",
-    location=loc_a,
-    defaults={"asset_category": cat_ac, "status": Asset.STATUS_ACTIVE, "tag": "AC-A001"},
-)
-rect_a, _ = Asset.objects.get_or_create(
-    name="Rectifier Unit",
-    location=loc_a,
-    defaults={"asset_category": cat_rect, "status": Asset.STATUS_ACTIVE, "tag": "RECT-A001"},
-)
-solar_a, _ = Asset.objects.get_or_create(
-    name="Solar Array A",
-    location=loc_a,
-    defaults={"asset_category": cat_solar, "status": Asset.STATUS_ACTIVE, "tag": "SOL-A001"},
-)
-janitorial_a, _ = Asset.objects.get_or_create(
-    name="Site Janitorial — Victoria Island Alpha",
-    location=loc_a,
-    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-A001"},
-)
-
-print("Seeding assets at Station B...")
-gen_b, _ = Asset.objects.get_or_create(
-    name="Generator Set B",
-    location=loc_b,
-    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-B001"},
-)
-battery_b, _ = Asset.objects.get_or_create(
-    name="Battery Bank",
-    location=loc_b,
-    defaults={"asset_category": cat_battery, "status": Asset.STATUS_ACTIVE, "tag": "BAT-B001"},
-)
-dc_b, _ = Asset.objects.get_or_create(
-    name="DC Distribution Board B",
-    location=loc_b,
-    defaults={"asset_category": cat_dc, "status": Asset.STATUS_ACTIVE, "tag": "DC-B001"},
-)
-ac_elec_b, _ = Asset.objects.get_or_create(
-    name="AC Distribution Board B",
-    location=loc_b,
-    defaults={"asset_category": cat_ac_elec, "status": Asset.STATUS_ACTIVE, "tag": "ACE-B001"},
-)
-janitorial_b, _ = Asset.objects.get_or_create(
-    name="Site Janitorial — Lekki Phase 1 Beta",
-    location=loc_b,
-    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-B001"},
-)
-
-print("Seeding assets at Station C...")
-gen_c, _ = Asset.objects.get_or_create(
-    name="Generator Set C",
-    location=loc_c,
-    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-C001"},
-)
-ac_c, _ = Asset.objects.get_or_create(
-    name="Air Conditioning Unit C",
-    location=loc_c,
-    defaults={"asset_category": cat_ac, "status": Asset.STATUS_ACTIVE, "tag": "AC-C001"},
-)
-rect_c, _ = Asset.objects.get_or_create(
-    name="Rectifier Unit C",
-    location=loc_c,
-    defaults={"asset_category": cat_rect, "status": Asset.STATUS_ACTIVE, "tag": "RECT-C001"},
-)
-battery_c, _ = Asset.objects.get_or_create(
-    name="Battery Bank C",
-    location=loc_c,
-    defaults={"asset_category": cat_battery, "status": Asset.STATUS_ACTIVE, "tag": "BAT-C001"},
-)
-janitorial_c, _ = Asset.objects.get_or_create(
-    name="Site Janitorial — Ikeja City Mall Gamma",
-    location=loc_c,
-    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-C001"},
-)
-
-print("Seeding assets at Station D...")
-gen_d, _ = Asset.objects.get_or_create(
-    name="Generator Set D",
-    location=loc_d,
-    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-D001"},
-)
-dc_d, _ = Asset.objects.get_or_create(
-    name="DC Distribution Board D",
-    location=loc_d,
-    defaults={"asset_category": cat_dc, "status": Asset.STATUS_ACTIVE, "tag": "DC-D001"},
-)
-ac_elec_d, _ = Asset.objects.get_or_create(
-    name="AC Distribution Board D",
-    location=loc_d,
-    defaults={"asset_category": cat_ac_elec, "status": Asset.STATUS_ACTIVE, "tag": "ACE-D001"},
-)
-solar_d, _ = Asset.objects.get_or_create(
-    name="Solar Array D",
-    location=loc_d,
-    defaults={"asset_category": cat_solar, "status": Asset.STATUS_ACTIVE, "tag": "SOL-D001"},
-)
-janitorial_d, _ = Asset.objects.get_or_create(
-    name="Site Janitorial — Wuse II Delta",
-    location=loc_d,
-    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-D001"},
-)
-
-print("Seeding assets at Station E...")
-gen_e, _ = Asset.objects.get_or_create(
-    name="Generator Set E",
-    location=loc_e,
-    defaults={"asset_category": cat_gen, "status": Asset.STATUS_ACTIVE, "tag": "GEN-E001"},
-)
-ac_e, _ = Asset.objects.get_or_create(
-    name="Air Conditioning Unit E",
-    location=loc_e,
-    defaults={"asset_category": cat_ac, "status": Asset.STATUS_ACTIVE, "tag": "AC-E001"},
-)
-battery_e, _ = Asset.objects.get_or_create(
-    name="Battery Bank E",
-    location=loc_e,
-    defaults={"asset_category": cat_battery, "status": Asset.STATUS_ACTIVE, "tag": "BAT-E001"},
-)
-rect_e, _ = Asset.objects.get_or_create(
-    name="Rectifier Unit E",
-    location=loc_e,
-    defaults={"asset_category": cat_rect, "status": Asset.STATUS_ACTIVE, "tag": "RECT-E001"},
-)
-janitorial_e, _ = Asset.objects.get_or_create(
-    name="Site Janitorial — GRA Phase 2 Epsilon",
-    location=loc_e,
-    defaults={"asset_category": cat_janitorial, "status": Asset.STATUS_ACTIVE, "tag": "JAN-E001"},
-)
-
-print("Seeding cluster team and Field Team user...")
 team_a, _ = ClusterTeam.objects.get_or_create(name="Lagos Island Team A", defaults={"cluster": cluster})
 tech, created = Personnel.objects.get_or_create(username="tech1")
 if created:

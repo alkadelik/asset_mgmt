@@ -8,7 +8,7 @@ import datetime
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TransactionTestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 from rest_framework import status
@@ -18,7 +18,7 @@ from .models import (
     Alarm, AlarmNote, Asset, AssetCategory, AssetCheckList, BaseStation,
     Cluster, ClusterGroup, Condition, DieselDelivery, InspectionResponse,
     Issue, Location, MeterReading, Notification, Part, PartDelivery, PartRequest, PartRequestLine,
-    PartStock, PartUsage, PMQuestion, Personnel, Region, Role, SafetyReport, StockMovement, Vendor,
+    PartStock, PartUsage, PMQuestion, Personnel, Region, Role, SafetyReport, Setting, StockMovement, Vendor,
     WorkOrder, WorkOrderChecklistResponse, ClusterTeam,
 )
 from . import parts as parts_rules
@@ -47,7 +47,10 @@ class TechnicianAPITestCase(APITestCase):
             site_classification=BaseStation.CLASS_PLATINUM,
         )
         self.location = Location.objects.create(base_station=self.station, name="Equipment Room")
-        self.category = AssetCategory.objects.create(name="Generator")
+        self.category = AssetCategory.objects.get_or_create(name=AssetCategory.DIESEL_GENERATOR)[0]
+        # The real type arrives with its Form 1a checklist and defects; these tests build their own.
+        AssetCheckList.objects.filter(asset_category=self.category).delete()
+        self.category.conditions.all().delete()
         self.asset = Asset.objects.create(
             asset_category=self.category, location=self.location, name="Generator Set 1",
         )
@@ -178,7 +181,7 @@ class DieselDeliveryTests(TechnicianAPITestCase):
         self.assertEqual(len(response.data), 1)
 
     def test_delivery_updates_generators_diesel_level_reading(self):
-        # self.asset (base fixture) is category "Generator" at self.station.
+        # self.asset (base fixture) is category "Diesel Generator" at self.station.
         MeterReading.objects.create(
             asset=self.asset, reading_type=MeterReading.TYPE_DIESEL_LEVEL,
             date=timezone.localdate() - timezone.timedelta(days=1), value=100, unit=MeterReading.UNIT_MM,
@@ -1023,7 +1026,7 @@ class InspectionResponseTests(TechnicianAPITestCase):
         self.assertFalse(InspectionResponse.objects.get(pk=ir_id).done)
 
     def _seed_todays_generator_readings(self):
-        # self.asset's category is "Generator" (base fixture) — required for `done` since
+        # self.asset's category is "Diesel Generator" (base fixture) — required for `done` since
         # generators must have today's run-hours and diesel-level readings, no exception.
         today = timezone.localdate()
         MeterReading.objects.create(
@@ -1430,32 +1433,6 @@ class ClusterManagerRoleTests(APITestCase):
         self.assertEqual(resp.data['role'], 'cluster_manager')
 
 
-class ConditionGoodFairPoorTests(APITestCase):
-    def test_choices_are_good_fair_poor(self):
-        self.assertEqual(
-            [label for _, label in AssetCheckList.CONDITION_CHOICES], ['Good', 'Fair', 'Poor']
-        )
-
-    def test_migration_maps_old_values(self):
-        import importlib
-        from django.apps import apps
-        mig = importlib.import_module('assets.migrations.0028_cluster_manager_role_and_good_fair_poor')
-        category = AssetCategory.objects.create(name='Generator')
-        old = {'very_good': 'good', 'fairly_good': 'fair', 'very_poor': 'poor'}
-        rows = {
-            v: AssetCheckList.objects.create(asset_category=category, instructions=v, condition=v)
-            for v in old
-        }
-        mig.forwards(apps, None)
-        for v, row in rows.items():
-            row.refresh_from_db()
-            self.assertEqual(row.condition, old[v])
-        mig.backwards(apps, None)
-        for v, row in rows.items():
-            row.refresh_from_db()
-            self.assertEqual(row.condition, v)
-
-
 class MoveExistingDataMigrationTests(TransactionTestCase):
     """Migration 0030 moves old single-part requests, cluster-group stock and the technician role."""
     migrate_from = [('assets', '0029_parts_stock_requests_phase_a')]
@@ -1697,3 +1674,160 @@ class ClusterManagerStationAccessTests(PartsFixtureMixin, TechnicianAPITestCase)
         self.client.force_authenticate(user=self.tech)
         sites = [s['site_id'] for s in self.client.get('/api/base-stations/').data]
         self.assertEqual(sites, ['TST-001'])
+
+
+class AssetTypeDataTests(TestCase):
+    """The nine Form 1a types, loaded by migration 0034 into every database."""
+
+    def test_nine_types_with_groups(self):
+        from .reference_data import TYPE_NAMES
+        names = set(AssetCategory.objects.values_list('name', flat=True))
+        self.assertEqual(names, set(TYPE_NAMES))
+        self.assertEqual(len(TYPE_NAMES), 9)
+        for removed in ('Air Conditioning', 'Rectifier', 'Hybrid DC Power', 'Generator'):
+            self.assertNotIn(removed, names)
+        tank = AssetCategory.objects.get(name='Diesel Tank')
+        self.assertEqual(tank.group, '2. Generator Power Supply')
+        self.assertEqual(AssetCategory.objects.get(name='Tower Structure').group, '6. Telecoms Tower')
+
+    def test_each_type_has_a_checklist_and_defects(self):
+        for category in AssetCategory.objects.all():
+            checklist = AssetCheckList.objects.get(asset_category=category)
+            self.assertGreater(checklist.questions.count(), 0, category.name)
+            if category.name != 'Battery Packs':
+                self.assertGreater(category.conditions.filter(severity='poor').count(), 0, category.name)
+                self.assertGreater(category.conditions.filter(severity='fair').count(), 0, category.name)
+
+    def test_battery_packs_have_no_defects_yet(self):
+        battery = AssetCategory.objects.get(name='Battery Packs')
+        self.assertEqual(battery.conditions.count(), 0)
+        self.assertEqual(AssetCheckList.objects.get(asset_category=battery).questions.count(), 1)
+
+    def test_generator_defects_are_tagged_poor_or_fair(self):
+        gen = AssetCategory.objects.get(name='Diesel Generator')
+        self.assertEqual(gen.conditions.get(name='Generator earthing').severity, 'poor')
+        self.assertEqual(gen.conditions.get(name='Generator not installed on plinth').severity, 'fair')
+        self.assertEqual(gen.conditions.filter(severity='poor').count(), 6)
+        self.assertEqual(gen.conditions.filter(severity='fair').count(), 4)
+
+    def test_control_panels_share_defects(self):
+        ac = AssetCategory.objects.get(name='AC Control Panel')
+        dc = AssetCategory.objects.get(name='DC Control Panel')
+        self.assertEqual(
+            sorted(ac.conditions.values_list('name', 'severity')),
+            sorted(dc.conditions.values_list('name', 'severity')),
+        )
+
+    def test_loading_twice_does_not_duplicate(self):
+        from .reference_data import load_asset_types
+        before = (Condition.objects.count(), PMQuestion.objects.count(), AssetCategory.objects.count())
+        load_asset_types(AssetCategory, Condition, AssetCheckList, PMQuestion)
+        after = (Condition.objects.count(), PMQuestion.objects.count(), AssetCategory.objects.count())
+        self.assertEqual(before, after)
+
+    def test_new_fields_default_sensibly(self):
+        gen = AssetCategory.objects.get(name='Diesel Generator')
+        self.assertIsNone(gen.service_interval_hours)
+        self.assertIsNone(gen.service_interval_days)
+        self.assertFalse(hasattr(AssetCheckList, 'CONDITION_CHOICES'))
+
+
+class AppSettingsTests(TestCase):
+    def test_colour_band_defaults(self):
+        from . import app_settings
+        self.assertEqual(app_settings.get_setting(app_settings.COLOUR_BANDS), {'green_min': 95, 'amber_min': 90})
+        self.assertEqual(app_settings.colour_for_percent(95), 'green')
+        self.assertEqual(app_settings.colour_for_percent(94), 'amber')
+        self.assertEqual(app_settings.colour_for_percent(90), 'amber')
+        self.assertEqual(app_settings.colour_for_percent(89), 'red')
+
+    def test_saved_bands_override_defaults(self):
+        from . import app_settings
+        Setting.objects.create(key=app_settings.COLOUR_BANDS, value={'green_min': 80, 'amber_min': 60})
+        self.assertEqual(app_settings.colour_for_percent(85), 'green')
+        self.assertEqual(app_settings.colour_for_percent(70), 'amber')
+        self.assertEqual(app_settings.colour_for_percent(59), 'red')
+
+
+class DataFieldTests(TechnicianAPITestCase):
+    """Litres sit beside mm; ratings start empty."""
+
+    def test_meter_reading_can_hold_litres_beside_mm(self):
+        reading = MeterReading.objects.create(
+            asset=self.asset, reading_type=MeterReading.TYPE_DIESEL_LEVEL, date=timezone.localdate(),
+            value=1500, unit=MeterReading.UNIT_MM, value_litres=2400,
+        )
+        reading.refresh_from_db()
+        self.assertEqual((reading.value, reading.value_litres), (1500, 2400))
+
+    def test_diesel_delivery_can_hold_litres_levels(self):
+        delivery = DieselDelivery.objects.create(
+            base_station=self.station, quantity_litres=200, tank_level_before=150, tank_level_after=1500,
+            tank_level_before_litres=240, tank_level_after_litres=2400, delivered_at=timezone.now(),
+        )
+        delivery.refresh_from_db()
+        self.assertEqual((delivery.tank_level_before_litres, delivery.tank_level_after_litres), (240, 2400))
+
+    def test_ratings_start_empty(self):
+        work_order = WorkOrder.objects.create(base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE)
+        ir = InspectionResponse.objects.create(work_order=work_order, asset=self.asset)
+        self.assertIsNone(ir.rating)
+        self.assertIsNone(ir.completed_at)
+        self.assertIsNone(work_order.station_rating)
+        self.assertIsNone(work_order.visit_date)
+
+
+class AssetTypeMigrationTests(TransactionTestCase):
+    """Migration 0034 moves assets of equivalent old types and removes the rest."""
+    migrate_from = [('assets', '0033_asset_types_ratings_schema')]
+    migrate_to = [('assets', '0034_load_asset_types')]
+
+    def setUp(self):
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old = executor.loader.project_state(self.migrate_from).apps
+        Category = old.get_model('assets', 'AssetCategory')
+        old.get_model('assets', 'Condition').objects.all().delete()
+        old.get_model('assets', 'AssetCheckList').objects.all().delete()
+        old.get_model('assets', 'Asset').objects.all().delete()
+        Category.objects.all().delete()
+
+        region = old.get_model('assets', 'Region').objects.create(name='R')
+        cg = old.get_model('assets', 'ClusterGroup').objects.create(region=region, name='CG')
+        cluster = old.get_model('assets', 'Cluster').objects.create(cluster_group=cg, name='C')
+        station = old.get_model('assets', 'BaseStation').objects.create(
+            cluster=cluster, name='S', address='a', site_id='S-1', site_classification='platinum')
+        location = old.get_model('assets', 'Location').objects.create(base_station=station, name='Room')
+        Asset = old.get_model('assets', 'Asset')
+        for name in ('Generator', 'Solar', 'Battery Bank', 'DC Electricals', 'AC Electricals', 'Janitorial',
+                     'Air Conditioning', 'Rectifier'):
+            category = Category.objects.create(name=name)
+            old.get_model('assets', 'Condition').objects.create(name=f'{name} defect', asset_category=category)
+            Asset.objects.create(asset_category=category, location=location, name=f'{name} asset')
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        self.apps = executor.loader.project_state(self.migrate_to).apps
+
+    def tearDown(self):
+        MigrationExecutor(connection).migrate(MigrationExecutor(connection).loader.graph.leaf_nodes())
+
+    def test_assets_move_to_equivalent_types_and_others_go(self):
+        Asset = self.apps.get_model('assets', 'Asset')
+        moved = {a.name: a.asset_category.name for a in Asset.objects.select_related('asset_category')}
+        self.assertEqual(moved, {
+            'Generator asset': 'Diesel Generator',
+            'Solar asset': 'Solar Panels and Structure',
+            'Battery Bank asset': 'Battery Packs',
+            'DC Electricals asset': 'DC Control Panel',
+            'AC Electricals asset': 'AC Control Panel',
+            'Janitorial asset': 'Janitorial Services',
+        })
+
+    def test_old_categories_and_their_defects_are_removed(self):
+        Category = self.apps.get_model('assets', 'AssetCategory')
+        names = set(Category.objects.values_list('name', flat=True))
+        self.assertEqual(len(names), 9)
+        self.assertFalse(names & {'Generator', 'Solar', 'Battery Bank', 'Air Conditioning', 'Rectifier'})
+        Condition = self.apps.get_model('assets', 'Condition')
+        self.assertFalse(Condition.objects.filter(name__endswith=' defect').exists())

@@ -116,8 +116,17 @@ class Location(models.Model):
 
 
 class AssetCategory(models.Model):
+    # The asset types that ratings and reports treat specially (see assets/ratings.py).
+    DIESEL_GENERATOR = 'Diesel Generator'
+    DIESEL_TANK = 'Diesel Tank'
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
+    # Form 1a heading this type sits under, e.g. "2. Generator Power Supply".
+    group = models.CharField(max_length=100, blank=True)
+    # Service interval, used for "Next service". Leave both empty where there is none.
+    service_interval_hours = models.PositiveIntegerField(null=True, blank=True, help_text='Run hours between services')
+    service_interval_days = models.PositiveIntegerField(null=True, blank=True, help_text='Days between services')
     # description = models.TextField(blank=True)
     maintenance_required = models.BooleanField(default=True)
     depreciation_method = models.CharField(max_length=100, blank=True, null=True)
@@ -133,8 +142,15 @@ class AssetCategory(models.Model):
 
 
 class Condition(models.Model):
+    """A defect that can be ticked on an inspection. Ticking any Poor defect makes the asset
+    Poor; otherwise any Fair defect makes it Fair; otherwise it is Good."""
+    SEVERITY_POOR = 'poor'
+    SEVERITY_FAIR = 'fair'
+    SEVERITY_CHOICES = [(SEVERITY_POOR, 'Poor'), (SEVERITY_FAIR, 'Fair')]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
+    severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default=SEVERITY_FAIR)
     asset_category = models.ForeignKey(
         AssetCategory, on_delete=models.CASCADE, null=True, blank=True, related_name='conditions'
     )
@@ -391,19 +407,9 @@ class AssetCheckList(models.Model):
     asset = models.ForeignKey(
         Asset, on_delete=models.CASCADE, null=True, blank=True, related_name='maintenance_list'
     )
-    CONDITION_GOOD = 'good'
-    CONDITION_FAIR = 'fair'
-    CONDITION_POOR = 'poor'
-    CONDITION_CHOICES = [
-        (CONDITION_GOOD, 'Good'),
-        (CONDITION_FAIR, 'Fair'),
-        (CONDITION_POOR, 'Poor'),
-    ]
-
     instructions = models.TextField()
     estimated_duration = models.PositiveIntegerField(help_text='Minutes', null=True, blank=True)
     required_parts = models.ManyToManyField(Part, blank=True, related_name='task_templates')
-    condition = models.CharField(max_length=20, choices=CONDITION_CHOICES, null=True, blank=True)
     comments = models.TextField(blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
@@ -525,6 +531,8 @@ class WorkOrder(models.Model):
         (TYPE_OVERHAUL, 'Overhaul'),
     ]
 
+    RATING_CHOICES = [('good', 'Good'), ('fair', 'Fair'), ('poor', 'Poor')]
+
     STATUS_OPEN = 'open'
     STATUS_IN_PROGRESS = 'in_progress'
     STATUS_COMPLETE = 'complete'
@@ -577,6 +585,10 @@ class WorkOrder(models.Model):
     cost_parts = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
+    # Set when every active asset at the station has been marked complete: the day the
+    # work was done (Africa/Lagos) and the station's rating for that visit.
+    visit_date = models.DateField(null=True, blank=True)
+    station_rating = models.CharField(max_length=10, choices=RATING_CHOICES, null=True, blank=True)
     submitted = models.BooleanField(default=False)
     submitted_at = models.DateTimeField(null=True, blank=True)
     geofence_verified = models.BooleanField(default=False)
@@ -706,6 +718,8 @@ class MeterReading(models.Model):
     date = models.DateField()
     value = models.PositiveIntegerField()
     unit = models.CharField(max_length=10, choices=UNIT_CHOICES)
+    # Diesel level only: the same reading in litres, entered by hand beside `value` in mm.
+    value_litres = models.PositiveIntegerField(null=True, blank=True)
     work_order = models.ForeignKey(
         WorkOrder, on_delete=models.SET_NULL, null=True, blank=True, related_name='meter_readings'
     )
@@ -855,6 +869,11 @@ class AlarmNote(models.Model):
 
 
 class InspectionResponse(models.Model):
+    RATING_GOOD = 'good'
+    RATING_FAIR = 'fair'
+    RATING_POOR = 'poor'
+    RATING_CHOICES = [(RATING_GOOD, 'Good'), (RATING_FAIR, 'Fair'), (RATING_POOR, 'Poor')]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     work_order = models.ForeignKey(WorkOrder, on_delete=models.CASCADE, related_name='inspection_responses')
     asset = models.ForeignKey(Asset, on_delete=models.PROTECT, related_name='inspection_responses')
@@ -862,6 +881,10 @@ class InspectionResponse(models.Model):
     conditions = models.ManyToManyField(Condition, blank=True, related_name='inspection_responses')
     comments = models.TextField(blank=True)
     done = models.BooleanField(default=False)
+    # Set when the asset is marked complete, from the defects ticked; never edited afterwards,
+    # so history does not change. Null until then.
+    rating = models.CharField(max_length=10, choices=RATING_CHOICES, null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
     updated = models.DateTimeField(auto_now=True)
 
@@ -931,6 +954,8 @@ class DieselDelivery(models.Model):
     quantity_litres = models.PositiveIntegerField()
     tank_level_before = models.PositiveIntegerField(null=True, blank=True, help_text='Millimetres (dipstick reading)')
     tank_level_after = models.PositiveIntegerField(null=True, blank=True, help_text='Millimetres (dipstick reading)')
+    tank_level_before_litres = models.PositiveIntegerField(null=True, blank=True)
+    tank_level_after_litres = models.PositiveIntegerField(null=True, blank=True)
     delivered_at = models.DateTimeField()
     recorded_by = models.ForeignKey(
         Personnel, on_delete=models.SET_NULL, null=True, blank=True, related_name='diesel_deliveries'
@@ -1162,3 +1187,14 @@ class SafetyReport(models.Model):
 
     def __str__(self):
         return f"{self.get_type_display()} at {self.base_station} — {self.description[:60]}"
+
+
+class Setting(models.Model):
+    """A simple key/value store for values an admin may change later (no screen for it yet).
+    Read through assets.app_settings, which supplies defaults."""
+    key = models.CharField(max_length=100, primary_key=True)
+    value = models.JSONField()
+    updated = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.key

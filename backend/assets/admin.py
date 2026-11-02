@@ -36,6 +36,7 @@ from .models import (
     PMSchedule,
     Region,
     Role,
+    Setting,
     SafetyReport,
     Station,
     StockMovement,
@@ -77,7 +78,7 @@ class MaintenanceListInline(admin.StackedInline):
     model = AssetCheckList
     fk_name = 'asset'
     extra = 0
-    fields = ('instructions', 'estimated_duration', 'required_parts', 'condition', 'comments')
+    fields = ('instructions', 'estimated_duration', 'required_parts', 'comments')
     filter_horizontal = ('required_parts',)
     verbose_name = 'Maintenance Item'
     verbose_name_plural = 'Maintenance List'
@@ -205,8 +206,8 @@ class PersonnelAdmin(UserAdmin):
 
 @admin.register(AssetCategory)
 class AssetCategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'maintenance_required', 'depreciation_method', 'created')
-    list_filter = ('maintenance_required',)
+    list_display = ('name', 'group', 'service_interval_hours', 'service_interval_days', 'maintenance_required')
+    list_filter = ('group', 'maintenance_required')
     search_fields = ('name',)
     readonly_fields = ('id', 'created', 'updated')
 
@@ -255,8 +256,8 @@ class PMQuestionAdmin(admin.ModelAdmin):
 
 @admin.register(AssetCheckList)
 class AssetCheckListAdmin(admin.ModelAdmin):
-    list_display = ('__str__', 'pm_category', 'asset_category', 'asset', 'condition', 'estimated_duration', 'created')
-    list_filter = ('pm_category', 'asset_category', 'condition')
+    list_display = ('__str__', 'pm_category', 'asset_category', 'asset', 'estimated_duration', 'created')
+    list_filter = ('pm_category', 'asset_category')
     search_fields = ('instructions',)
     autocomplete_fields = ('pm_category', 'asset_category', 'asset', 'required_parts')
     readonly_fields = ('id', 'created', 'updated')
@@ -418,7 +419,7 @@ class StockMovementAdmin(admin.ModelAdmin):
 
 @admin.register(MeterReading)
 class MeterReadingAdmin(admin.ModelAdmin):
-    list_display = ('asset', 'reading_type', 'date', 'value', 'unit', 'work_order')
+    list_display = ('asset', 'reading_type', 'date', 'value', 'unit', 'value_litres', 'work_order')
     list_filter = ('reading_type', 'unit')
     search_fields = ('asset__name', 'asset__tag')
     autocomplete_fields = ('asset', 'work_order', 'recorded_by')
@@ -585,8 +586,8 @@ class AttachmentAdmin(admin.ModelAdmin):
 
 @admin.register(Condition)
 class ConditionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'asset_category', 'created')
-    list_filter = ('asset_category',)
+    list_display = ('name', 'severity', 'asset_category', 'created')
+    list_filter = ('severity', 'asset_category')
     search_fields = ('name',)
     autocomplete_fields = ('asset_category',)
     readonly_fields = ('id', 'created', 'updated')
@@ -594,8 +595,8 @@ class ConditionAdmin(admin.ModelAdmin):
 
 @admin.register(InspectionResponse)
 class InspectionResponseAdmin(admin.ModelAdmin):
-    list_display = ('asset', 'work_order', 'issues_found', 'done', 'created')
-    list_filter = ('issues_found', 'done')
+    list_display = ('asset', 'work_order', 'issues_found', 'done', 'rating', 'created')
+    list_filter = ('issues_found', 'done', 'rating')
     search_fields = ('asset__name', 'asset__tag', 'work_order__id')
     autocomplete_fields = ('work_order', 'asset')
     filter_horizontal = ('conditions',)
@@ -637,3 +638,9 @@ class AlarmNoteAdmin(admin.ModelAdmin):
     search_fields = ('text',)
     autocomplete_fields = ('alarm',)
     readonly_fields = ('id', 'created')
+
+
+@admin.register(Setting)
+class SettingAdmin(admin.ModelAdmin):
+    list_display = ('key', 'value', 'updated')
+    readonly_fields = ('updated',)
