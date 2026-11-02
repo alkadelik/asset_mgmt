@@ -215,7 +215,7 @@ class InspectionResponseDetailSerializer(serializers.ModelSerializer):
 class MeterReadingSerializer(serializers.ModelSerializer):
     class Meta:
         model = MeterReading
-        fields = ['id', 'asset', 'reading_type', 'date', 'value', 'unit', 'work_order', 'created']
+        fields = ['id', 'asset', 'reading_type', 'date', 'value', 'unit', 'value_litres', 'work_order', 'created']
         read_only_fields = ['id', 'created']
 
 
@@ -257,7 +257,8 @@ class DieselDeliverySerializer(serializers.ModelSerializer):
         model = DieselDelivery
         fields = [
             'id', 'base_station', 'work_order', 'vendor', 'quantity_litres',
-            'tank_level_before', 'tank_level_after', 'delivered_at',
+            'tank_level_before', 'tank_level_after', 'tank_level_before_litres', 'tank_level_after_litres',
+            'delivered_at',
             'recorded_by', 'notes', 'attachments', 'created',
         ]
         read_only_fields = ['id', 'recorded_by', 'attachments', 'created']

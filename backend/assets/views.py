@@ -74,6 +74,20 @@ def me(request):
     return Response(PersonnelSerializer(request.user).data)
 
 
+def _optional_whole_number(data, name):
+    """(value, error): `value` is None when absent; `error` is a Response when it is not a whole number >= 0."""
+    raw = data.get(name)
+    if raw is None or raw == '':
+        return None, None
+    try:
+        number = float(raw)
+        if number != int(number) or number < 0:
+            raise ValueError
+        return int(number), None
+    except (TypeError, ValueError):
+        return None, Response({'detail': f'{name} must be a whole number.'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 # ── Today ─────────────────────────────────────────────────────────────────────
 
 @api_view(['GET'])
@@ -367,6 +381,9 @@ def inspection_response_detail(request, pk):
 
     if 'issues_found' in request.data:
         ir.issues_found = request.data['issues_found']
+        if ir.issues_found is False:
+            # "No issues" means no defects: don't let earlier ticks still count toward the rating.
+            ir.conditions.clear()
     if 'comments' in request.data:
         ir.comments = request.data['comments']
     if 'conditions' in request.data:
@@ -541,12 +558,19 @@ def meter_readings(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    value_litres, error = _optional_whole_number(request.data, 'value_litres')
+    if error:
+        return error
+    if reading_type != MeterReading.TYPE_DIESEL_LEVEL:
+        value_litres = None
+
     reading = MeterReading.objects.create(
         id=client_id or uuid.uuid4(),
         asset=asset,
         reading_type=reading_type,
         value=value,
         unit=unit,
+        value_litres=value_litres,
         date=request.data.get('date') or timezone.localdate(),
         work_order_id=request.data.get('work_order') or None,
         recorded_by=request.user,
@@ -636,6 +660,12 @@ def diesel_deliveries(request):
         return Response({'detail': 'Base station not found.'}, status=status.HTTP_404_NOT_FOUND)
 
     tank_level_after = request.data.get('tank_level_after') or None
+    before_litres, error = _optional_whole_number(request.data, 'tank_level_before_litres')
+    if error:
+        return error
+    after_litres, error = _optional_whole_number(request.data, 'tank_level_after_litres')
+    if error:
+        return error
 
     delivery = DieselDelivery.objects.create(
         id=client_id or uuid.uuid4(),
@@ -645,6 +675,8 @@ def diesel_deliveries(request):
         quantity_litres=quantity_litres,
         tank_level_before=request.data.get('tank_level_before') or None,
         tank_level_after=tank_level_after,
+        tank_level_before_litres=before_litres,
+        tank_level_after_litres=after_litres,
         delivered_at=request.data.get('delivered_at') or timezone.now(),
         recorded_by=request.user,
         notes=request.data.get('notes', ''),
@@ -662,6 +694,7 @@ def diesel_deliveries(request):
                 asset=generator,
                 reading_type=MeterReading.TYPE_DIESEL_LEVEL,
                 value=tank_level_after,
+                value_litres=after_litres,
                 unit=MeterReading.UNIT_MM,
                 date=timezone.localdate(),
                 work_order_id=request.data.get('work_order') or None,

@@ -2106,3 +2106,86 @@ class RatingOnCompleteTests(TechnicianAPITestCase):
 
         InspectionResponse.objects.create(work_order=later, asset=self.tank, rating=None)  # not complete
         self.assertEqual(current_asset_rating(self.tank), 'good')
+
+
+class LitresAndDefectsApiTests(TechnicianAPITestCase):
+    """Diesel levels take litres beside mm; saying "no issues" clears ticked defects."""
+
+    def post_level(self, **extra):
+        payload = {
+            'asset': str(self.asset.id), 'reading_type': MeterReading.TYPE_DIESEL_LEVEL,
+            'value': 1500, 'unit': MeterReading.UNIT_MM, **extra,
+        }
+        return self.client.post('/api/meter-readings/', payload)
+
+    def test_diesel_level_stores_and_returns_litres_beside_mm(self):
+        response = self.post_level(value_litres=2400)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual((response.data['value'], response.data['value_litres']), (1500, 2400))
+        self.assertEqual(MeterReading.objects.get().value_litres, 2400)
+
+    def test_litres_are_optional_for_older_clients(self):
+        response = self.post_level()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(response.data['value_litres'])
+
+    def test_litres_must_be_a_whole_number(self):
+        for bad in ('abc', -5, 1.5):
+            self.assertEqual(self.post_level(value_litres=bad).status_code, status.HTTP_400_BAD_REQUEST, bad)
+
+    def test_run_hours_ignore_litres(self):
+        response = self.client.post('/api/meter-readings/', {
+            'asset': str(self.asset.id), 'reading_type': MeterReading.TYPE_RUN_HOURS,
+            'value': 100, 'unit': MeterReading.UNIT_HOURS, 'value_litres': 50,
+        })
+        self.assertIsNone(response.data['value_litres'])
+
+    def test_replayed_reading_keeps_its_litres(self):
+        rid = str(uuid.uuid4())
+        self.post_level(id=rid, value_litres=2400)
+        again = self.post_level(id=rid, value_litres=9999)
+        self.assertEqual(again.data['value_litres'], 2400)
+
+    def test_delivery_stores_litres_levels_and_passes_them_to_the_reading(self):
+        response = self.client.post('/api/diesel-deliveries/', {
+            'base_station': str(self.station.id), 'quantity_litres': 200,
+            'tank_level_before': 150, 'tank_level_after': 1500,
+            'tank_level_before_litres': 240, 'tank_level_after_litres': 2400,
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['tank_level_before_litres'], 240)
+        self.assertEqual(response.data['tank_level_after_litres'], 2400)
+        reading = MeterReading.objects.get(reading_type=MeterReading.TYPE_DIESEL_LEVEL)
+        self.assertEqual((reading.value, reading.value_litres), (1500, 2400))
+
+    def test_delivery_litres_levels_are_optional_and_validated(self):
+        ok = self.client.post('/api/diesel-deliveries/', {
+            'base_station': str(self.station.id), 'quantity_litres': 200,
+        })
+        self.assertEqual(ok.status_code, status.HTTP_201_CREATED)
+        self.assertIsNone(ok.data['tank_level_after_litres'])
+        bad = self.client.post('/api/diesel-deliveries/', {
+            'base_station': str(self.station.id), 'quantity_litres': 200, 'tank_level_after_litres': 'lots',
+        })
+        self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_saying_no_issues_clears_the_ticked_defects(self):
+        work_order = WorkOrder.objects.create(base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE)
+        ir = InspectionResponse.objects.create(work_order=work_order, asset=self.asset, issues_found=True)
+        defect = Condition.objects.create(name='Engine problems', asset_category=self.category, severity='poor')
+        ir.conditions.set([defect])
+        response = self.client.patch(f'/api/inspection-responses/{ir.id}/', {'issues_found': False}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['conditions'], [])
+        self.assertEqual(ir.conditions.count(), 0)
+
+    def test_conditions_in_the_response_carry_their_severity(self):
+        work_order = WorkOrder.objects.create(base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE)
+        ir = InspectionResponse.objects.create(work_order=work_order, asset=self.asset, issues_found=True)
+        defect = Condition.objects.create(name='Engine problems', asset_category=self.category, severity='poor')
+        response = self.client.patch(
+            f'/api/inspection-responses/{ir.id}/', {'conditions': [str(defect.id)]}, format='json',
+        )
+        self.assertEqual(response.data['conditions'][0]['severity'], 'poor')
+        listed = self.client.get(f'/api/conditions/?asset_category={self.category.id}')
+        self.assertEqual(listed.data[0]['severity'], 'poor')
