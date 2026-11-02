@@ -1831,3 +1831,278 @@ class AssetTypeMigrationTests(TransactionTestCase):
         self.assertFalse(names & {'Generator', 'Solar', 'Battery Bank', 'Air Conditioning', 'Rectifier'})
         Condition = self.apps.get_model('assets', 'Condition')
         self.assertFalse(Condition.objects.filter(name__endswith=' defect').exists())
+
+
+class AssetRatingRuleTests(TestCase):
+    """HANDOFF.md 4.2: the asset rating comes from the defects ticked."""
+
+    def test_no_defects_is_good(self):
+        from .ratings import rating_from_severities
+        self.assertEqual(rating_from_severities([]), 'good')
+
+    def test_a_fair_defect_makes_it_fair(self):
+        from .ratings import rating_from_severities
+        self.assertEqual(rating_from_severities(['fair']), 'fair')
+        self.assertEqual(rating_from_severities(['fair', 'fair', 'fair']), 'fair')
+
+    def test_a_poor_defect_makes_it_poor(self):
+        from .ratings import rating_from_severities
+        self.assertEqual(rating_from_severities(['poor']), 'poor')
+
+    def test_poor_wins_over_fair(self):
+        from .ratings import rating_from_severities
+        self.assertEqual(rating_from_severities(['fair', 'poor', 'fair']), 'poor')
+
+
+class StationRatingRuleTests(TestCase):
+    """HANDOFF.md 4.2, rule by rule."""
+
+    GEN, TANK = 'Diesel Generator', 'Diesel Tank'
+
+    def rate(self, *assets):
+        from .ratings import station_rating_from_assets
+        return station_rating_from_assets(assets)
+
+    # Rule 1: Poor
+    def test_poor_generator_makes_the_station_poor(self):
+        self.assertEqual(self.rate((self.GEN, 'poor'), (self.TANK, 'good'), ('AC Control Panel', 'good')), 'poor')
+
+    def test_poor_tank_makes_the_station_poor(self):
+        self.assertEqual(self.rate((self.GEN, 'good'), (self.TANK, 'poor'), ('AC Control Panel', 'good')), 'poor')
+
+    def test_poor_generator_alone_is_enough_even_if_everything_else_is_good(self):
+        self.assertEqual(self.rate((self.GEN, 'poor')), 'poor')
+
+    def test_two_other_poor_assets_make_the_station_poor(self):
+        self.assertEqual(self.rate(
+            (self.GEN, 'good'), (self.TANK, 'good'),
+            ('AC Control Panel', 'poor'), ('Tower Structure', 'poor'), ('Janitorial Services', 'good'),
+        ), 'poor')
+
+    def test_three_other_poor_assets_also_make_it_poor(self):
+        self.assertEqual(self.rate(
+            ('AC Control Panel', 'poor'), ('DC Control Panel', 'poor'), ('Tower Structure', 'poor'),
+        ), 'poor')
+
+    def test_generator_and_tank_poor_counts_do_not_need_the_two_other_rule(self):
+        self.assertEqual(self.rate((self.GEN, 'poor'), (self.TANK, 'poor')), 'poor')
+
+    # The "two other assets" rule does not count the generator or tank
+    def test_one_poor_other_plus_a_fair_generator_is_not_poor(self):
+        self.assertEqual(self.rate(
+            (self.GEN, 'fair'), (self.TANK, 'good'), ('AC Control Panel', 'poor'),
+        ), 'fair')
+
+    def test_one_poor_other_asset_is_only_fair(self):
+        self.assertEqual(self.rate(
+            (self.GEN, 'good'), (self.TANK, 'good'), ('AC Control Panel', 'poor'), ('Tower Structure', 'good'),
+        ), 'fair')
+
+    # Rule 2: Good
+    def test_all_good_is_good(self):
+        self.assertEqual(self.rate((self.GEN, 'good'), (self.TANK, 'good'), ('Tower Structure', 'good')), 'good')
+
+    def test_one_or_two_fair_is_still_good(self):
+        self.assertEqual(self.rate((self.GEN, 'fair'), (self.TANK, 'good'), ('Tower Structure', 'good')), 'good')
+        self.assertEqual(self.rate((self.GEN, 'fair'), (self.TANK, 'fair'), ('Tower Structure', 'good')), 'good')
+
+    # Rule 3: Fair
+    def test_three_fair_is_fair(self):
+        self.assertEqual(self.rate(
+            (self.GEN, 'fair'), (self.TANK, 'fair'), ('Tower Structure', 'fair'), ('AC Control Panel', 'good'),
+        ), 'fair')
+
+    def test_one_poor_other_with_two_fair_is_fair(self):
+        self.assertEqual(self.rate(
+            ('AC Control Panel', 'poor'), ('Tower Structure', 'fair'), ('DC Control Panel', 'fair'),
+        ), 'fair')
+
+    # Stations with no generator or tank
+    def test_station_without_generator_or_tank_uses_only_the_other_assets(self):
+        self.assertEqual(self.rate(('Transformer', 'good'), ('Tower Structure', 'good')), 'good')
+        self.assertEqual(self.rate(('Transformer', 'poor'), ('Tower Structure', 'good')), 'fair')
+        self.assertEqual(self.rate(('Transformer', 'poor'), ('Tower Structure', 'poor')), 'poor')
+        self.assertEqual(self.rate(
+            ('Transformer', 'fair'), ('Tower Structure', 'fair'), ('AC Control Panel', 'fair'),
+        ), 'fair')
+
+    def test_station_with_a_generator_but_no_tank(self):
+        self.assertEqual(self.rate((self.GEN, 'good'), ('Tower Structure', 'poor')), 'fair')
+        self.assertEqual(self.rate((self.GEN, 'poor'), ('Tower Structure', 'good')), 'poor')
+
+    def test_station_with_a_tank_but_no_generator(self):
+        self.assertEqual(self.rate((self.TANK, 'poor'), ('Tower Structure', 'good')), 'poor')
+
+    def test_two_generators_one_poor_makes_the_station_poor(self):
+        self.assertEqual(self.rate((self.GEN, 'good'), (self.GEN, 'poor')), 'poor')
+
+
+class RatingOnCompleteTests(TechnicianAPITestCase):
+    """Marking an asset complete stores its rating; completing the last one stores the station's."""
+
+    def setUp(self):
+        super().setUp()
+        self.work_order = WorkOrder.objects.create(
+            base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE, due_date=timezone.localdate(),
+        )
+        self.tank_type = AssetCategory.objects.get(name=AssetCategory.DIESEL_TANK)
+        self.panel_type = AssetCategory.objects.get(name='AC Control Panel')
+        self.tank = Asset.objects.create(asset_category=self.tank_type, location=self.location, name='Tank')
+        self.panel = Asset.objects.create(asset_category=self.panel_type, location=self.location, name='Panel')
+        self.poor_gen = Condition.objects.create(name='Engine problems', asset_category=self.category, severity='poor')
+        self.fair_gen = Condition.objects.create(name='Generator housing', asset_category=self.category, severity='fair')
+        self.fair_tank = Condition.objects.create(name='Minor rust', asset_category=self.tank_type, severity='fair')
+        self.poor_panel = Condition.objects.create(name='Exposed terminals', asset_category=self.panel_type, severity='poor')
+
+    def ir(self, asset):
+        return InspectionResponse.objects.get_or_create(work_order=self.work_order, asset=asset)[0]
+
+    def give_generator_readings(self):
+        today = timezone.localdate()
+        for kind, unit in ((MeterReading.TYPE_RUN_HOURS, 'hours'), (MeterReading.TYPE_DIESEL_LEVEL, 'mm')):
+            MeterReading.objects.create(asset=self.asset, reading_type=kind, date=today, value=100, unit=unit)
+
+    def complete(self, asset, *conditions):
+        ir = self.ir(asset)
+        ir.conditions.set(conditions)
+        if asset == self.asset:
+            self.give_generator_readings()
+        return self.client.patch(
+            f'/api/inspection-responses/{ir.id}/', {'done': True, 'comments': 'ok'}, format='json',
+        )
+
+    def test_rating_is_stored_from_the_defects_ticked(self):
+        self.assertEqual(self.complete(self.panel).status_code, 200)
+        self.assertEqual(self.ir(self.panel).rating, 'good')
+
+        self.assertEqual(self.complete(self.tank, self.fair_tank).status_code, 200)
+        self.assertEqual(self.ir(self.tank).rating, 'fair')
+
+        self.assertEqual(self.complete(self.asset, self.fair_gen, self.poor_gen).status_code, 200)
+        self.assertEqual(self.ir(self.asset).rating, 'poor')
+
+    def test_rating_and_time_are_in_the_response(self):
+        response = self.complete(self.panel, self.poor_panel)
+        self.assertEqual(response.data['rating'], 'poor')
+        self.assertIsNotNone(response.data['completed_at'])
+
+    def test_rating_is_not_set_before_the_asset_is_complete(self):
+        ir = self.ir(self.panel)
+        ir.conditions.set([self.poor_panel])
+        self.client.patch(f'/api/inspection-responses/{ir.id}/', {'comments': 'x'}, format='json')
+        self.assertIsNone(self.ir(self.panel).rating)
+
+    def test_stored_rating_does_not_change_if_defects_are_edited_later(self):
+        self.complete(self.panel, self.poor_panel)
+        ir = self.ir(self.panel)
+        self.client.patch(f'/api/inspection-responses/{ir.id}/', {'conditions': []}, format='json')
+        self.assertEqual(self.ir(self.panel).rating, 'poor')
+
+    def test_failed_complete_stores_no_rating(self):
+        ir = self.ir(self.asset)  # generator with no readings: refused
+        response = self.client.patch(f'/api/inspection-responses/{ir.id}/', {'done': True, 'comments': 'x'}, format='json')
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(self.ir(self.asset).rating)
+
+    def test_partial_visit_has_no_station_rating(self):
+        self.ir(self.tank), self.ir(self.asset), self.ir(self.panel)
+        self.complete(self.panel)
+        self.complete(self.tank)
+        self.work_order.refresh_from_db()
+        self.assertIsNone(self.work_order.station_rating)
+        self.assertIsNone(self.work_order.visit_date)
+
+    def test_station_rating_is_stored_when_the_last_asset_completes(self):
+        self.ir(self.tank), self.ir(self.asset), self.ir(self.panel)
+        self.complete(self.panel, self.poor_panel)
+        self.complete(self.tank)
+        self.complete(self.asset, self.fair_gen)
+        self.work_order.refresh_from_db()
+        # one Poor other asset, no poor generator/tank -> Fair
+        self.assertEqual(self.work_order.station_rating, 'fair')
+        self.assertEqual(self.work_order.visit_date, timezone.localdate())
+
+    def test_poor_generator_makes_the_visit_poor(self):
+        self.ir(self.tank), self.ir(self.asset), self.ir(self.panel)
+        self.complete(self.panel)
+        self.complete(self.tank)
+        self.complete(self.asset, self.poor_gen)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.station_rating, 'poor')
+
+    def test_two_other_poor_assets_make_the_visit_poor(self):
+        second_panel = Asset.objects.create(asset_category=self.panel_type, location=self.location, name='Panel 2')
+        for a in (self.tank, self.asset, self.panel, second_panel):
+            self.ir(a)
+        self.complete(self.tank)
+        self.complete(self.asset)
+        self.complete(self.panel, self.poor_panel)
+        self.complete(second_panel, self.poor_panel)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.station_rating, 'poor')
+
+    def test_station_without_generator_or_tank(self):
+        Asset.objects.filter(pk__in=[self.asset.pk]).update(status=Asset.STATUS_RETIRED)
+        self.tank.delete()
+        self.complete(self.panel, self.poor_panel)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.station_rating, 'fair')
+
+    def test_inactive_assets_do_not_block_the_visit(self):
+        Asset.objects.filter(pk=self.tank.pk).update(status=Asset.STATUS_RETIRED)
+        self.ir(self.asset), self.ir(self.panel)
+        self.complete(self.panel)
+        self.complete(self.asset)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.station_rating, 'good')
+
+    def test_an_asset_with_no_inspection_yet_keeps_the_visit_open(self):
+        self.ir(self.panel)
+        self.complete(self.panel)  # generator and tank have no inspection response
+        self.work_order.refresh_from_db()
+        self.assertIsNone(self.work_order.station_rating)
+
+    def test_reopening_an_asset_clears_its_rating_and_the_visit_rating(self):
+        for a in (self.tank, self.asset, self.panel):
+            self.ir(a)
+        self.complete(self.panel)
+        self.complete(self.tank)
+        self.complete(self.asset)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.station_rating, 'good')
+
+        ir = self.ir(self.panel)
+        self.client.patch(f'/api/inspection-responses/{ir.id}/', {'done': False}, format='json')
+        ir.refresh_from_db()
+        self.work_order.refresh_from_db()
+        self.assertIsNone(ir.rating)
+        self.assertIsNone(self.work_order.station_rating)
+        self.assertIsNone(self.work_order.visit_date)
+
+    def test_visit_date_is_the_lagos_day(self):
+        from unittest import mock
+        self.ir(self.panel)
+        Asset.objects.filter(pk__in=[self.asset.pk, self.tank.pk]).update(status=Asset.STATUS_RETIRED)
+        # 23:30 UTC on 4 Nov is already 00:30 on 5 Nov in Lagos (UTC+1).
+        late = datetime.datetime(2026, 11, 4, 23, 30, tzinfo=datetime.timezone.utc)
+        with mock.patch('assets.ratings.timezone.now', return_value=late):
+            self.complete(self.panel)
+        self.work_order.refresh_from_db()
+        self.assertEqual(self.work_order.visit_date, datetime.date(2026, 11, 5))
+
+    def test_current_rating_is_the_latest_completed_visit_and_good_if_none(self):
+        from .ratings import current_asset_rating
+        self.assertEqual(current_asset_rating(self.panel), 'good')
+
+        self.complete(self.panel, self.poor_panel)
+        self.assertEqual(current_asset_rating(self.panel), 'poor')
+
+        later = WorkOrder.objects.create(base_station=self.station, type=WorkOrder.TYPE_PREVENTIVE)
+        InspectionResponse.objects.create(
+            work_order=later, asset=self.panel, done=True, rating='fair',
+            completed_at=timezone.now() + datetime.timedelta(days=1),
+        )
+        self.assertEqual(current_asset_rating(self.panel), 'fair')
+
+        InspectionResponse.objects.create(work_order=later, asset=self.tank, rating=None)  # not complete
+        self.assertEqual(current_asset_rating(self.tank), 'good')

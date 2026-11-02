@@ -159,7 +159,7 @@ class AlarmDetailSerializer(serializers.ModelSerializer):
 class ConditionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Condition
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'severity']
 
 
 class ChecklistResponseSerializer(serializers.ModelSerializer):
@@ -194,7 +194,7 @@ class InspectionResponseDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = InspectionResponse
         fields = [
-            'id', 'work_order_id', 'asset', 'issues_found', 'done',
+            'id', 'work_order_id', 'asset', 'issues_found', 'done', 'rating', 'completed_at',
             'comments', 'conditions', 'checklist_responses', 'issues',
             'created', 'updated',
         ]

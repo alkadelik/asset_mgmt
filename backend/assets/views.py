@@ -24,6 +24,7 @@ from .models import (
     PartUsage, SafetyReport, Vendor,
 )
 from . import parts as parts_rules
+from . import ratings
 from .serializers import (
     PersonnelSerializer, WorkOrderDetailSerializer, AlarmDetailSerializer,
     AlarmNoteSerializer, InspectionResponseDetailSerializer,
@@ -394,6 +395,12 @@ def inspection_response_detail(request, pk):
                         {'detail': "Today's run hours and diesel level readings are required for generators."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+        # Marking complete stores the rating (and the visit's, if this was the last asset);
+        # reopening clears them.
+        if done and not ir.done:
+            ratings.complete_asset(ir)
+        elif not done and ir.done:
+            ratings.reopen_asset(ir)
         ir.done = done
     ir.save()
 
