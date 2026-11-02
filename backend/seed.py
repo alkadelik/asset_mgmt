@@ -1,6 +1,8 @@
 """
 Run with: python manage.py shell < seed.py
-Creates a complete set of test data matching the mock data in the mobile app.
+Creates reference data only (roles, users, regions/clusters/teams, stations, assets,
+checklists, conditions, parts, vendors, opening regional stock, today's scheduled work
+orders). No maintenance, alarms, diesel, safety, part requests or usage.
 Safe to re-run — uses get_or_create throughout.
 """
 import django
@@ -11,13 +13,10 @@ from assets.models import (
     Region, ClusterGroup, Cluster, Client, BaseStation, Location,
     AssetCategory, Asset, Condition, Role, Personnel, ClusterTeam,
     PMCategory, AssetCheckList, PMQuestion,
-    WorkOrder, Alarm, AlarmNote, InspectionResponse, WorkOrderChecklistResponse,
-    DieselDelivery, MeterReading, Part, PartRequest, PartRequestLine, PartStock, PartUsage,
-    SafetyReport, StockMovement, Vendor,
+    WorkOrder, Part, PartStock, StockMovement, Vendor,
 )
 
 today = timezone.localdate()
-now = timezone.now()
 
 print("Seeding roles...")
 role_tech, _ = Role.objects.get_or_create(name=Role.FIELD_TEAM)
@@ -420,10 +419,9 @@ wo_a, wo_a_created = WorkOrder.objects.get_or_create(
     type=WorkOrder.TYPE_PREVENTIVE,
     due_date=today,
     defaults={
-        "status": WorkOrder.STATUS_IN_PROGRESS,
+        "status": WorkOrder.STATUS_OPEN,
         "priority": WorkOrder.PRIORITY_MEDIUM,
         "assigned_to": tech,
-        "started_at": now - timezone.timedelta(hours=1),
     },
 )
 if wo_a_created:
@@ -481,43 +479,7 @@ wo_e, wo_e_created = WorkOrder.objects.get_or_create(
 if wo_e_created:
     print(f"  Created WO for {station_e.site_id}")
 
-# wo_a is seeded directly as in_progress (bypassing POST /start/), so mirror what
-# /start/ now does: create an empty InspectionResponse + checklist for every
-# active asset at the station, so all of them are openable from Screen 2 and
-# start from a clean (unchecked, not done) state for real end-to-end testing.
-for other_asset in [gen_a, ac_a, rect_a, solar_a, janitorial_a]:
-    ir_other, ir_other_created = InspectionResponse.objects.get_or_create(work_order=wo_a, asset=other_asset)
-    if ir_other_created:
-        other_checklists = AssetCheckList.objects.filter(asset_category=other_asset.asset_category)
-        other_questions = PMQuestion.objects.filter(task_template__in=other_checklists)
-        WorkOrderChecklistResponse.objects.bulk_create([
-            WorkOrderChecklistResponse(inspection_response=ir_other, question=q)
-            for q in other_questions
-        ])
-        print(f"  Created IR for {other_asset.name}")
-
-print("Seeding alarms...")
-alarm_open, _ = Alarm.objects.get_or_create(
-    asset=rect_a,
-    resolved_at__isnull=True,
-    defaults={"raised_at": now - timezone.timedelta(hours=2)},
-)
-
-alarm_resolved, _ = Alarm.objects.get_or_create(
-    asset=battery_b,
-    resolved_at__isnull=False,
-    defaults={
-        "raised_at": now - timezone.timedelta(hours=4),
-        "resolved_at": now - timezone.timedelta(hours=1),
-        "resolved_by": tech,
-    },
-)
-AlarmNote.objects.get_or_create(
-    alarm=alarm_resolved,
-    defaults={"text": "Battery temperature normalised after cooling."},
-)
-
-print("Seeding diesel vendor and parts...")
+print("Seeding vendors and parts...")
 diesel_supplier, _ = Vendor.objects.get_or_create(
     name="Lagos Fuel Depot",
     defaults={"type": Vendor.TYPE_SUPPLIER, "phone_number": "08012345678"},
@@ -544,75 +506,9 @@ for part, qty in ((oil_filter, 20), (ac_filter, 10)):
             note="Opening stock (seed data).",
         )
 
-print("Seeding diesel delivery and meter readings...")
-DieselDelivery.objects.get_or_create(
-    base_station=station_a,
-    delivered_at=timezone.make_aware(timezone.datetime.combine(today, timezone.datetime.min.time().replace(hour=8))),
-    defaults={
-        "vendor": diesel_supplier,
-        "quantity_litres": 200,
-        "tank_level_before": 150,
-        "tank_level_after": 1500,
-        "recorded_by": tech,
-        "notes": "Routine top-up delivery.",
-    },
-)
-MeterReading.objects.get_or_create(
-    asset=gen_a,
-    reading_type=MeterReading.TYPE_RUN_HOURS,
-    date=today,
-    defaults={"value": 12480, "unit": MeterReading.UNIT_HOURS, "work_order": wo_a, "recorded_by": tech},
-)
-MeterReading.objects.get_or_create(
-    asset=gen_a,
-    reading_type=MeterReading.TYPE_DIESEL_LEVEL,
-    date=today,
-    defaults={"value": 1500, "unit": MeterReading.UNIT_MM, "work_order": wo_a, "recorded_by": tech},
-)
-
-print("Seeding part request and usage...")
-seed_request, _ = PartRequest.objects.get_or_create(
-    base_station=station_a,
-    requested_by=tech,
-    notes="Oil filter due for replacement during PM.",
-    defaults={"work_order": wo_a, "asset": gen_a, "cluster_team": team_a},
-)
-PartRequestLine.objects.get_or_create(
-    request=seed_request,
-    part=oil_filter,
-    defaults={"quantity": 2, "required_date": today + timezone.timedelta(days=3)},
-)
-PartUsage.objects.get_or_create(
-    work_order=wo_a,
-    asset=gen_a,
-    part=oil_filter,
-    defaults={
-        "qty_used": 1,
-        "notes": "Replaced during routine PM — old filter was clogged.",
-        "recorded_by": tech,
-    },
-)
-
-print("Seeding safety report...")
-SafetyReport.objects.get_or_create(
-    base_station=station_a,
-    description="Loose cable trunking cover near generator bay — trip hazard.",
-    defaults={
-        "work_order": wo_a,
-        "type": SafetyReport.TYPE_HAZARD,
-        "severity": SafetyReport.SEVERITY_MEDIUM,
-        "reported_by": tech,
-    },
-)
-
 print("\nDone! Summary:")
 print(f"  Stations: {BaseStation.objects.count()}")
 print(f"  Assets:   {Asset.objects.count()}")
-print(f"  Work orders (today): {WorkOrder.objects.filter(due_date=today).count()}")
-print(f"  Alarms:   {Alarm.objects.count()}")
-print(f"  Diesel deliveries: {DieselDelivery.objects.count()}")
-print(f"  Part requests: {PartRequest.objects.count()}")
-print(f"  Part usages: {PartUsage.objects.count()}")
-print(f"  Safety reports: {SafetyReport.objects.count()}")
+print(f"  Work orders (today, scheduled): {WorkOrder.objects.filter(due_date=today).count()}")
 print(f"  Field Team user: tech1 / tech1pass (Lagos Island Team A)")
 print(f"  Cluster Manager user: cm1 / cm1pass (Lagos Island)")

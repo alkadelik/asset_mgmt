@@ -12,3 +12,6 @@ backend/staticfiles/
 # Env
 .env
 .env.local
+
+# DB backups contain password hashes
+backups/
