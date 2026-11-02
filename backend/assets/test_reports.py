@@ -176,6 +176,15 @@ class SlaTests(ReportTestCase):
         self.visit(self.station, day(5), complete=False)  # Saturday, still ahead
         self.assertEqual(self.sla()['sla_percent'], 100.0)
 
+    def test_todays_visit_counts_only_once_done(self):
+        today_visit = self.visit(self.station, THURSDAY, complete=False)
+        self.assertIsNone(self.sla()['sla_percent'])  # the day is not over
+        self.visit(self.station, day(0))
+        self.assertEqual(self.sla()['sla_percent'], 100.0)
+        today_visit.delete()
+        self.visit(self.station, THURSDAY)
+        self.assertEqual(self.sla()['sla_percent'], 100.0)
+
     def test_a_late_visit_does_not_count_for_the_day_it_was_due(self):
         self.visit(self.station, day(0), done_on=day(1))
         self.assertEqual(self.sla()['sla_percent'], 0.0)

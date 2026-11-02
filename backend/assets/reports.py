@@ -101,10 +101,13 @@ def asset_type_grid(stations, asset_type, start, end):
 def sla_percent(stations, month_start, month_end):
     """Complete visits ÷ scheduled visits in the period, as {station id: percent or None}.
     A visit counts only if it was completed on the day it was scheduled; visits still ahead of
-    today are not counted either way."""
-    cutoff = min(month_end, lagos_today())
+    today are not counted either way. Today's visit counts only once it is done."""
+    today = lagos_today()
+    cutoff = min(month_end, today)
     scheduled, complete = {}, {}
     for visit in scheduled_visits(stations).filter(due_date__range=(month_start, cutoff)):
+        if visit.due_date == today and visit.visit_date != today:
+            continue
         scheduled[visit.base_station_id] = scheduled.get(visit.base_station_id, 0) + 1
         if visit.visit_date == visit.due_date:
             complete[visit.base_station_id] = complete.get(visit.base_station_id, 0) + 1
