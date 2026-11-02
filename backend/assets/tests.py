@@ -578,6 +578,26 @@ class ManagerListTests(PartsFixtureMixin, TechnicianAPITestCase):
         self.assertIsNotNone(row['photo_url'])
         self.assertIn('part_identifier', row)
 
+    def test_usage_rows_say_how_much_was_added_at_site(self):
+        parts_rules.adjust_stock(self.part, 3, team=self.team, note='Count')
+        self.client.post('/api/part-usages/', {
+            'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+            'part': str(self.part.id), 'qty_used': 5, 'photo': make_jpeg(),
+        }, format='multipart')  # team held 3, used 5 -> 2 added at site
+        self.client.post('/api/part-usages/', {
+            'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+            'part': str(self.part2.id), 'qty_used': 1, 'photo': make_jpeg(),
+        }, format='multipart')  # team held 0 of this one -> 1 added at site
+        parts_rules.adjust_stock(self.part, 10, team=self.team, note='Restock')
+        self.client.post('/api/part-usages/', {
+            'work_order': str(self.work_order.id), 'asset': str(self.asset.id),
+            'part': str(self.part.id), 'qty_used': 1, 'photo': make_jpeg(),
+        }, format='multipart')  # plenty held -> nothing added
+        self.client.force_authenticate(user=self.cluster_manager)
+        rows = self.client.get('/api/manager/part-usages/').data
+        added = sorted((r['part']['name'], r['qty_used'], r['added_at_site']) for r in rows)
+        self.assertEqual(added, [('Fan Belt', 1, 1), ('Oil Filter', 1, 0), ('Oil Filter', 5, 2)])
+
     def test_manager_without_cluster_sees_nothing(self):
         self.make_request()
         self.cluster_manager.cluster = None

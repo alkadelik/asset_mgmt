@@ -763,7 +763,7 @@ def part_delivery_confirm_received(request, pk):
 def _usage_queryset():
     return PartUsage.objects.select_related(
         'part', 'asset', 'recorded_by', 'cluster_team', 'work_order__base_station',
-    )
+    ).prefetch_related('stock_movements')
 
 
 def _check_photo(upload):

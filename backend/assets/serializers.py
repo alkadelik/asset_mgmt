@@ -3,7 +3,7 @@ from .models import (
     Personnel, BaseStation, WorkOrder, InspectionResponse,
     WorkOrderChecklistResponse, Issue, Condition, Alarm, AlarmNote, Asset,
     Attachment, DieselDelivery, MeterReading, Notification, Part, PartDelivery, PartRequest,
-    PartRequestLine, PartStock, PartUsage, SafetyReport, Vendor, AssetCategory, AssetCheckList,
+    PartRequestLine, PartStock, PartUsage, SafetyReport, StockMovement, Vendor, AssetCategory, AssetCheckList,
     PMQuestion,
 )
 
@@ -382,12 +382,13 @@ class PartUsageSerializer(serializers.ModelSerializer):
     base_station = serializers.SerializerMethodField()
     cluster_team = serializers.SerializerMethodField()
     photo_url = serializers.SerializerMethodField()
+    added_at_site = serializers.SerializerMethodField()
 
     class Meta:
         model = PartUsage
         fields = [
             'id', 'work_order', 'base_station', 'asset', 'part', 'part_identifier', 'qty_used', 'notes',
-            'photo_url', 'photo_taken_at', 'cluster_team', 'recorded_by', 'created',
+            'photo_url', 'photo_taken_at', 'cluster_team', 'added_at_site', 'recorded_by', 'created',
         ]
         read_only_fields = ['id', 'recorded_by', 'created']
 
@@ -400,6 +401,12 @@ class PartUsageSerializer(serializers.ModelSerializer):
 
     def get_cluster_team(self, obj):
         return {'id': str(obj.cluster_team_id), 'name': obj.cluster_team.name} if obj.cluster_team_id else None
+
+    def get_added_at_site(self, obj):
+        # Quantity the team did not hold and so was added at site when this was logged.
+        return sum(
+            m.change for m in obj.stock_movements.all() if m.reason == StockMovement.REASON_ADDED_AT_SITE
+        )
 
     def get_photo_url(self, obj):
         if not obj.photo:
