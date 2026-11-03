@@ -13,7 +13,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-only')
 DEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# DEBUG = True
 
 ALLOWED_HOSTS = ['*']
 
@@ -73,13 +73,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'asset_app.pjhmuqevzomfivwpkhpx',
-        'PASSWORD': 'Pde0FWSRMgMXAq',
-        'HOST': 'aws-0-eu-west-1.pooler.supabase.com',
-        'PORT': '5432',
-    }
-}
+        'NAME': os.environ.get('DB_NAME', 'assets'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'your_password'),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
+        'OPTIONS': {'sslmode': os.environ.get('DB_SSLMODE', 'prefer')},
+}}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
