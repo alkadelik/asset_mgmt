@@ -9,7 +9,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-t!^ia0&7p!v3k046et65mr8rkyu5!szj^^=vp8*1j%s94k)zvk'
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-only')
+DEBUG = os.environ.get('DEBUG', 'true').lower() == 'true'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -36,6 +37,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -72,13 +74,13 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'assets',
-        'USER': 'postgres',
+        'USER': 'postgres.pjhmuqevzomfivwpkhpx',
+        # 'USER': 'postgres',
         'PASSWORD': 'your_password',
-        'HOST': 'localhost',
+        'HOST': 'aws-0-eu-west-1.pooler.supabase.com',
         'PORT': '5432',
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
@@ -115,6 +117,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Media files (technician-uploaded photos: diesel delivery tickets, safety report photos, etc.)
 MEDIA_URL = 'media/'
